@@ -455,6 +455,7 @@ return [
         'land_cost' => '土地原価',
         'building_cost' => '建築原価',                 // 上書き: Housing/Property は「建築費」
         'is_land_cost_manual' => '土地原価の手動入力',
+        'refresh_land_cost' => '土地原価を今の計算値にする',
         'info_obtained_date' => '情報入手日',
         'acquired_date' => '取得日',
         'survey_date' => '来場日',

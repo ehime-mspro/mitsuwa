@@ -115,6 +115,7 @@ class PropertyController extends Controller
 
         // 紐づけ先に応じたFK設定
         $this->setLandSourceForeignKeys($validated);
+        $this->applyAutomaticLandCost($validated, $request, null);
 
         $property = HsProperty::create($validated);
 
@@ -223,6 +224,7 @@ class PropertyController extends Controller
 
         // 紐づけ先に応じたFK設定
         $this->setLandSourceForeignKeys($validated);
+        $this->applyAutomaticLandCost($validated, $request, $property);
 
         $property->update($validated);
 
@@ -472,6 +474,8 @@ class PropertyController extends Controller
             'building_cost'                 => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'land_cost'                     => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'is_land_cost_manual'           => 'required|in:0,1',
+            // 「今の計算値にする」（保存しない欄。applyAutomaticLandCost() が読んで外す）
+            'refresh_land_cost'             => 'nullable|boolean',
             'target_selling_price_building' => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'notes'                         => 'nullable|string|max:5000',
         ], [
@@ -486,6 +490,20 @@ class PropertyController extends Controller
                 $validator->errors()->add('land_source_type', HsProperty::LAND_LOCKED_BY_CONTRACT);
             }
         })->validate();
+    }
+
+    /**
+     * 手動 OFF なら、土地原価をサーバーが決める（送られた値は使わない。判断待ち ⑤。App\Support\HousingLandCost::whenAutomatic()）。
+     * setLandSourceForeignKeys() のあとに呼ぶ（保存する紐付けで計算する）。$current は登録では null。
+     */
+    private function applyAutomaticLandCost(array &$validated, Request $request, ?HsProperty $current): void
+    {
+        unset($validated['refresh_land_cost']);
+        if ((bool) $validated['is_land_cost_manual']) {
+            return;
+        }
+
+        $validated['land_cost'] = HousingLandCost::whenAutomatic($current, $validated, $request->boolean('refresh_land_cost'));
     }
 
     /**

@@ -14,6 +14,7 @@ use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Support\AttachmentDelivery;
+use App\Support\HousingLandCost;
 use App\Support\JapanTime;
 use App\Support\Settings;
 use Illuminate\Http\Request;
@@ -96,6 +97,7 @@ class CustomOrderController extends Controller
 
         $this->setLandSourceForeignKeys($validated);
         $this->clearLandFieldsForCustomerLand($validated);
+        $this->applyAutomaticLandCost($validated, $request, null);
 
         $order = HsCustomOrder::create($validated);
 
@@ -178,6 +180,7 @@ class CustomOrderController extends Controller
 
         $this->setLandSourceForeignKeys($validated);
         $this->clearLandFieldsForCustomerLand($validated);
+        $this->applyAutomaticLandCost($validated, $request, $customOrder);
 
         $customOrder->update($validated);
 
@@ -382,6 +385,8 @@ class CustomOrderController extends Controller
             'land_selling_price'        => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'land_cost'                 => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'is_land_cost_manual'       => 'required|in:0,1',
+            // 「今の計算値にする」（保存しない欄。applyAutomaticLandCost() が読んで外す）
+            'refresh_land_cost'         => 'nullable|boolean',
             'tax_rate'                  => 'required|numeric|min:0|max:99.99',
             'contract_date'             => 'nullable|date',
             'construction_start_date'   => 'nullable|date',
@@ -431,6 +436,22 @@ class CustomOrderController extends Controller
             $validated['land_cost'] = null;
             $validated['is_land_cost_manual'] = 0;
         }
+    }
+
+    /**
+     * 自社の土地（分譲地区画・仕入れ案件）で手動 OFF なら、土地原価をサーバーが決める（送られた値は使わない。判断待ち ⑤。
+     * App\Support\HousingLandCost::whenAutomatic()）。お客様の土地・種別が空は clearLandFieldsForCustomerLand() が空にしたまま。
+     * setLandSourceForeignKeys()・clearLandFieldsForCustomerLand() のあとに呼ぶ。$current は登録では null。
+     */
+    private function applyAutomaticLandCost(array &$validated, Request $request, ?HsCustomOrder $current): void
+    {
+        unset($validated['refresh_land_cost']);
+        $ownLand = in_array($validated['land_source_type'] ?? null, [HousingLandSourceType::ProjectLot->value, HousingLandSourceType::Procurement->value], true);
+        if (! $ownLand || (bool) $validated['is_land_cost_manual']) {
+            return;
+        }
+
+        $validated['land_cost'] = HousingLandCost::whenAutomatic($current, $validated, $request->boolean('refresh_land_cost'));
     }
 
     /**

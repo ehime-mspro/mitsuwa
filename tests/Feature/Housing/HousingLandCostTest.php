@@ -2,11 +2,7 @@
 
 namespace Tests\Feature\Housing;
 
-use App\Models\ReCostItem;
-use App\Models\ReProcurement;
-use App\Models\ReProcurementCost;
 use App\Models\ReProject;
-use App\Models\ReProjectCost;
 use App\Models\ReProjectLot;
 use App\Support\HousingLandCost;
 use Tests\Feature\Housing\Screens\HousingScreenTestCase;
@@ -20,31 +16,6 @@ use Tests\Feature\Housing\Screens\HousingScreenTestCase;
 class HousingLandCostTest extends HousingScreenTestCase
 {
     private const MANUAL = 5000000;
-
-    /** 分譲地（原価 24,000,000）と区画 2（12,000,000）・区画 4（18,000,000）→ 按分は 9,600,000・14,400,000 */
-    private function pricedProject(): array
-    {
-        $project = $this->project();
-        ReProjectCost::create(['project_id' => $project->id, 'cost_item_id' => $this->costItem()->id, 'estimated_amount' => 24000000]);
-
-        return [$project, $this->lot($project, 2, 12000000), $this->lot($project, 4, 18000000)];
-    }
-
-    /** 仕入れ案件（確定 7,350,000＋見込み 500,000 → 7,850,000） */
-    private function costedProcurement(): ReProcurement
-    {
-        $procurement = $this->procurement();
-        $item = $this->costItem();
-        ReProcurementCost::create(['procurement_id' => $procurement->id, 'cost_item_id' => $item->id, 'estimated_amount' => 7000000, 'actual_amount' => 7350000]);
-        ReProcurementCost::create(['procurement_id' => $procurement->id, 'cost_item_id' => $item->id, 'estimated_amount' => 500000]);
-
-        return $procurement;
-    }
-
-    private function costItem(): ReCostItem
-    {
-        return ReCostItem::firstOrCreate(['name' => '造成費']);
-    }
 
     // ============================================================
     // 計算（forLink）

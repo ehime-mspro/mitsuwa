@@ -12,6 +12,7 @@ use App\Models\HsProperty;
 use App\Models\ReProcurement;
 use App\Models\ReProjectLot;
 use App\Models\User;
+use App\Support\HousingLandCost;
 use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -246,6 +247,8 @@ class HsContractListController extends Controller
             'selling_price_building' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'tax_rate'               => 'required|numeric|min:0|max:99.99',
             'is_land_cost_manual'    => 'sometimes|boolean',
+            // 「今の計算値にする」（保存しない欄。手動 OFF のときだけ読む）
+            'refresh_land_cost'      => 'nullable|boolean',
             'land_cost'              => [
                 Rule::requiredIf(fn() => $request->boolean('is_land_cost_manual')),
                 'nullable', 'integer', 'min:0', 'max:' . self::MAX_INT_COLUMN,
@@ -280,10 +283,15 @@ class HsContractListController extends Controller
                 'is_land_cost_manual' => $isManual,
                 'updated_by'          => auth()->id(),
             ];
-            // 手動入力ON のときのみ land_cost を上書き保存（OFFのときは紐付け先参照を維持）
-            if ($isManual) {
-                $propertyData['land_cost'] = $validated['land_cost'] ?? null;
-            }
+            // 手動 ON は送られた値。OFF はサーバーが決める（手入力をやめた・「今の計算値にする」なら紐付け先から計算し、
+            // それ以外は保存済みのまま。判断待ち ⑤。App\Support\HousingLandCost::whenAutomatic()）
+            $propertyData['land_cost'] = $isManual
+                ? ($validated['land_cost'] ?? null)
+                : HousingLandCost::whenAutomatic($property, [
+                    'land_source_type'  => $property->land_source_type?->value,
+                    're_project_lot_id' => $property->re_project_lot_id,
+                    're_procurement_id' => $property->re_procurement_id,
+                ], $request->boolean('refresh_land_cost'));
             $property->update($propertyData);
         });
 
@@ -357,6 +365,8 @@ class HsContractListController extends Controller
             'building_contract_price' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'tax_rate'                => 'required|numeric|min:0|max:99.99',
             'is_land_cost_manual'     => 'sometimes|boolean',
+            // 「今の計算値にする」（保存しない欄。自社の土地で手動 OFF のときだけ読む）
+            'refresh_land_cost'       => 'nullable|boolean',
             // 顧客所有地以外 かつ 手動入力ON の場合のみ土地原価必須
             'land_cost'               => [
                 Rule::requiredIf(fn() =>
@@ -421,10 +431,15 @@ class HsContractListController extends Controller
                     $data['re_procurement_id'] = null;
                 }
                 $data['land_selling_price'] = $validated['land_selling_price'] ?? null;
-                // 手動入力ON のときのみ land_cost を上書き。OFF時は既存値を維持
-                if ($isManual) {
-                    $data['land_cost'] = $validated['land_cost'] ?? null;
-                }
+                // 手動 ON は送られた値。OFF はサーバーが決める（手入力をやめた・紐付け先を変えた・「今の計算値にする」なら
+                // 紐付け先から計算し、それ以外は保存済みのまま。判断待ち ⑤。App\Support\HousingLandCost::whenAutomatic()）
+                $data['land_cost'] = $isManual
+                    ? ($validated['land_cost'] ?? null)
+                    : HousingLandCost::whenAutomatic($hsCustomOrder, [
+                        'land_source_type'  => $sourceType,
+                        're_project_lot_id' => $data['re_project_lot_id'],
+                        're_procurement_id' => $data['re_procurement_id'],
+                    ], $request->boolean('refresh_land_cost'));
             }
 
             $hsCustomOrder->update($data);

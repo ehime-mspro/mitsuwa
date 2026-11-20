@@ -8,8 +8,11 @@ use App\Models\Department;
 use App\Models\HsContract;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
+use App\Models\ReCostItem;
 use App\Models\ReProcurement;
+use App\Models\ReProcurementCost;
 use App\Models\ReProject;
+use App\Models\ReProjectCost;
 use App\Models\ReProjectLot;
 use App\Models\User;
 use Database\Seeders\DepartmentSeeder;
@@ -114,6 +117,36 @@ abstract class HousingScreenTestCase extends TestCase
             'selling_price' => $price,
             'status' => $status,
         ]);
+    }
+
+    /**
+     * 土地原価の自動の値を計算できる分譲地（原価 24,000,000）と区画 2（12,000,000）・区画 4（18,000,000）。
+     * 按分は区画 2 が 9,600,000・区画 4 が 14,400,000（App\Support\HousingLandCost）。
+     *
+     * @return array{0: ReProject, 1: ReProjectLot, 2: ReProjectLot}
+     */
+    protected function pricedProject(string $lotStatus = 'on_sale'): array
+    {
+        $project = $this->project();
+        ReProjectCost::create(['project_id' => $project->id, 'cost_item_id' => $this->costItem()->id, 'estimated_amount' => 24000000]);
+
+        return [$project, $this->lot($project, 2, 12000000, $lotStatus), $this->lot($project, 4, 18000000)];
+    }
+
+    /** 土地原価の自動の値を計算できる仕入れ案件（確定 7,350,000＋見込み 500,000 → 7,850,000） */
+    protected function costedProcurement(array $overrides = []): ReProcurement
+    {
+        $procurement = $this->procurement($overrides);
+        $item = $this->costItem();
+        ReProcurementCost::create(['procurement_id' => $procurement->id, 'cost_item_id' => $item->id, 'estimated_amount' => 7000000, 'actual_amount' => 7350000]);
+        ReProcurementCost::create(['procurement_id' => $procurement->id, 'cost_item_id' => $item->id, 'estimated_amount' => 500000]);
+
+        return $procurement;
+    }
+
+    protected function costItem(): ReCostItem
+    {
+        return ReCostItem::firstOrCreate(['name' => '造成費']);
     }
 
     protected function procurement(array $overrides = []): ReProcurement
