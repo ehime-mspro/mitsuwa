@@ -76,8 +76,9 @@ class CustomOrderController extends Controller
 
         // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id'));
+        $computedLandCost = $this->computedLandCost(null);
 
-        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers', 'lotSelection'));
+        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers', 'lotSelection', 'computedLandCost'));
     }
 
     /**
@@ -163,8 +164,9 @@ class CustomOrderController extends Controller
 
         // 今の区画（入力エラーで戻ったら選んでいた区画）の分譲地と区画の一覧をサーバで描く（H1: 空から始めると保存で紐付けが消えていた）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $customOrder->re_project_lot_id));
+        $computedLandCost = $this->computedLandCost($customOrder);
 
-        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection'));
+        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost'));
     }
 
     /**
@@ -452,6 +454,17 @@ class CustomOrderController extends Controller
         }
 
         $validated['land_cost'] = HousingLandCost::whenAutomatic($current, $validated, $request->boolean('refresh_land_cost'));
+    }
+
+    /**
+     * 画面に出す「今の紐付け先から計算した土地原価」（入力エラーで戻った画面は選んでいた紐付け先。判断待ち ⑤）
+     */
+    private function computedLandCost(?HsCustomOrder $order): ?int
+    {
+        $type = old('land_source_type', $order?->land_source_type?->value);
+
+        return HousingLandCost::forLink(is_string($type) ? $type : null,
+            old('re_project_lot_id', $order?->re_project_lot_id), old('re_procurement_id', $order?->re_procurement_id));
     }
 
     /**

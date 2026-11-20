@@ -279,16 +279,7 @@
             </div>
             <div x-show="landSourceType === 'project_lot' || landSourceType === 'procurement'">
                 <label class="block text-sm font-semibold text-gray-700 mb-1">土地原価</label>
-                <div class="flex gap-3" style="align-items: center;">
-                    <input type="number" name="land_cost" x-model="landCost"
-                           :readonly="!isLandCostManual"
-                           :class="isLandCostManual ? 'form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none' : 'form-input w-full h-[40px] px-3 border border-gray-200 rounded-md text-sm text-gray-400 bg-gray-50'"
-                           placeholder="自動取得">
-                    <label class="flex gap-1 text-xs text-gray-500 cursor-pointer" style="white-space: nowrap; align-items: center;">
-                        <input type="checkbox" x-model="isLandCostManual" style="width: auto; height: auto;">
-                        手動入力
-                    </label>
-                </div>
+                @include('housing._land_cost_field')
                 <p class="text-xs text-gray-500 mt-1">紐づけ先から自動取得。手動入力で上書き可能</p>
             </div>
 
@@ -351,6 +342,31 @@ function customOrderForm() {
         landAreaSqm: {{ \Illuminate\Support\Js::from((string) old('land_area_sqm', $o?->land_area_sqm ?? '')) }},
         landCost: {{ \Illuminate\Support\Js::from((string) old('land_cost', $o?->land_cost ?? '')) }},
         isLandCostManual: {{ old('is_land_cost_manual', $o?->is_land_cost_manual ?? 0) ? 'true' : 'false' }},
+        // 土地原価の手動 OFF の決まり（判断待ち ⑤）。保存済みの値は DB から読む（入力エラーで戻った画面でも old() を見ない）
+        savedManual: {{ \Illuminate\Support\Js::from((bool) ($o?->is_land_cost_manual ?? false)) }},
+        savedLandCost: {{ \Illuminate\Support\Js::from($o?->land_cost) }},
+        savedLink: {{ \Illuminate\Support\Js::from(['type' => $o?->land_source_type?->value, 'lot' => $o?->re_project_lot_id, 'procurement' => $o?->re_procurement_id]) }},
+        creating: {{ \Illuminate\Support\Js::from(! $isEdit) }},
+        computedLandCost: {{ \Illuminate\Support\Js::from($computedLandCost) }},
+        refreshLandCost: {{ old('refresh_land_cost') ? 'true' : 'false' }},
+
+        landCostView: function() {
+            return housingLandCostView({
+                manual: this.isLandCostManual,
+                creating: this.creating,
+                savedManual: this.savedManual,
+                linkChanged: !this.creating && housingLandLinkChanged(this.savedLink, { type: this.landSourceType, lot: this.selectedLotId, procurement: this.selectedProcurementId }),
+                refresh: this.refreshLandCost,
+                computed: this.computedLandCost,
+                saved: this.savedLandCost,
+                hasLink: (this.landSourceType === 'project_lot' && !!this.selectedLotId) || (this.landSourceType === 'procurement' && !!this.selectedProcurementId)
+            });
+        },
+
+        landCostShownText: function() {
+            var value = this.landCostView().value;
+            return value === null ? '' : Number(value).toLocaleString('ja-JP');
+        },
         autoFilled: false,
         projects: @json($projectsForJs),
         lots: @json($initialLots),
@@ -371,6 +387,7 @@ function customOrderForm() {
 
         onSourceTypeChange: function() {
             this.autoFilled = false;
+            this.computedLandCost = null;
             if (this.landSourceType !== 'project_lot') {
                 this.selectedProjectId = null;
                 this.selectedLotId = null;
@@ -384,6 +401,7 @@ function customOrderForm() {
         onProjectChange: function() {
             var self = this;
             self.selectedLotId = null;
+            self.computedLandCost = null;
             self.lots = [];
             if (!self.selectedProjectId) return;
             self.fetchLots(self.selectedProjectId);
@@ -418,6 +436,7 @@ function customOrderForm() {
 
         onLotChange: function() {
             var self = this;
+            self.computedLandCost = null;
             if (!self.selectedLotId) return;
             var lot = null;
             for (var i = 0; i < self.lots.length; i++) {
@@ -426,6 +445,7 @@ function customOrderForm() {
                     break;
                 }
             }
+            self.computedLandCost = lot && lot.land_cost !== undefined ? lot.land_cost : null;
             if (lot) {
                 self.landAreaSqm = lot.area_sqm;
                 if (lot.land_cost !== null && !self.isLandCostManual) {
@@ -437,6 +457,7 @@ function customOrderForm() {
 
         onProcurementChange: function() {
             var self = this;
+            self.computedLandCost = null;
             if (!self.selectedProcurementId) return;
             fetch('{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId, {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
@@ -457,8 +478,9 @@ function customOrderForm() {
                 if (data.land_area_sqm !== null) {
                     self.landAreaSqm = data.land_area_sqm;
                 }
-                if (data.effective_cost_total && !self.isLandCostManual) {
-                    self.landCost = data.effective_cost_total;
+                self.computedLandCost = data.land_cost === undefined ? null : data.land_cost;
+                if (data.land_cost !== null && data.land_cost !== undefined && !self.isLandCostManual) {
+                    self.landCost = data.land_cost;
                 }
                 self.autoFilled = true;
             })
@@ -505,4 +527,5 @@ function customOrderForm() {
         }
     };
 }
+@include('housing._land_cost_functions')
 </script>

@@ -62,8 +62,10 @@ class LandCostAutoTest extends HousingScreenTestCase
     public function test_an_untouched_automatic_property_keeps_its_saved_value(): void
     {
         $property = $this->propertyOnLot(false);
+        $form = $this->fill($this->propertyEditForm($property), ['notes' => '外構は別途']);
+        $form['fields']['land_cost'] = '7000000'; // 手動 OFF の欄は送らない画面だが、古い画面・手で組んだ送信の値も使わない
 
-        $this->saveProperty($property, $this->fill($this->propertyEditForm($property), ['land_cost' => '7000000', 'notes' => '外構は別途']));
+        $this->saveProperty($property, $form);
 
         $property->refresh();
         $this->assertSame([self::MANUAL, '外構は別途'], [$property->land_cost, $property->notes], '手動 OFF で送られた値を保存した／チェックに触らない保存で値が動いた');
@@ -83,7 +85,8 @@ class LandCostAutoTest extends HousingScreenTestCase
     public function test_manual_on_saves_the_sent_value_even_with_refresh(): void
     {
         $property = $this->propertyOnLot(false);
-        $form = $this->fill($this->propertyEditForm($property), ['is_land_cost_manual' => '1', 'land_cost' => '6000000']);
+        $form = $this->propertyEditForm($property, 'data.isLandCostManual = true; data.landCost = "6000000";');
+        $this->assertSame(['1', '6000000'], [$form['fields']['is_land_cost_manual'], $form['fields']['land_cost'] ?? null]);
         $form['fields']['refresh_land_cost'] = '1';
 
         $this->saveProperty($property, $form);
@@ -101,7 +104,8 @@ class LandCostAutoTest extends HousingScreenTestCase
             'data.landSourceType = "project_lot"; data.onSourceTypeChange(); data.selectedProjectId = "' . $project->id . '"; data.onProjectChange();
              setImmediate(function () { data.selectedLotId = "' . $two->id . '"; data.onLotChange(); });',
             [$this->apiResponse(route('api.housing.project-lots', ['project_id' => $project->id, 'exclude_hs' => 1]))]);
-        $form = $this->fill($form, ['property_name' => '平井 建売 2', 'land_cost' => '7000000', 'is_land_cost_manual' => '0']);
+        $form = $this->fill($form, ['property_name' => '平井 建売 2', 'is_land_cost_manual' => '0']);
+        $form['fields']['land_cost'] = '7000000';
 
         $this->landed($this->submit($form, $url));
 
@@ -109,7 +113,8 @@ class LandCostAutoTest extends HousingScreenTestCase
 
         // 紐付けの無い建売は計算できない（空）
         $form = $this->fill($this->browserForm($this->htmlOf($url), $needle, 'housingPropertyForm'),
-            ['property_name' => '紐付けなし', 'address' => '愛媛県松山市1', 'land_cost' => '7000000', 'is_land_cost_manual' => '0']);
+            ['property_name' => '紐付けなし', 'address' => '愛媛県松山市1', 'is_land_cost_manual' => '0']);
+        $form['fields']['land_cost'] = '7000000';
         $this->landed($this->submit($form, $url));
         $this->assertNull(HsProperty::where('property_name', '紐付けなし')->firstOrFail()->land_cost);
     }
@@ -146,7 +151,8 @@ class LandCostAutoTest extends HousingScreenTestCase
         $order = $this->customOrder(['land_source_type' => 'project_lot', 're_project_lot_id' => $two->id, 'land_cost' => 9600000, 'is_land_cost_manual' => false]);
         $form = $this->orderEditForm($order, 'data.selectedLotId = "' . $four->id . '"; data.onLotChange();');
 
-        $this->saveOrder($order, $this->fill($form, ['land_cost' => '7000000']));
+        $form['fields']['land_cost'] = '7000000';
+        $this->saveOrder($order, $form);
 
         $order->refresh();
         $this->assertSame([$four->id, 14400000], [$order->re_project_lot_id, $order->land_cost], '紐付け先を変えたのに新しい区画から計算していない');
@@ -160,7 +166,9 @@ class LandCostAutoTest extends HousingScreenTestCase
         $this->assertSame(9600000, $manual->fresh()->land_cost, '契約済みの注文住宅で手入力をやめたのに前の値が残った');
 
         $automatic = $this->customOrder(['order_code' => 'CO-002', 'status' => 'contracted', 'land_source_type' => 'project_lot', 're_project_lot_id' => $two->id, 'land_cost' => self::MANUAL, 'is_land_cost_manual' => false]);
-        $this->saveOrder($automatic, $this->fill($this->orderEditForm($automatic), ['notes' => '外構は別途', 'land_cost' => '7000000']));
+        $form = $this->fill($this->orderEditForm($automatic), ['notes' => '外構は別途']);
+        $form['fields']['land_cost'] = '7000000';
+        $this->saveOrder($automatic, $form);
         $automatic->refresh();
         $this->assertSame([self::MANUAL, '外構は別途'], [$automatic->land_cost, $automatic->notes], '契約済みの注文住宅で備考だけ直したのに土地原価が動いた');
     }
@@ -185,6 +193,155 @@ class LandCostAutoTest extends HousingScreenTestCase
 
         $order->refresh();
         $this->assertSame([null, false], [$order->land_cost, $order->is_land_cost_manual]);
+    }
+
+    // ============================================================
+    // 登録・編集の画面（建売・注文住宅の _form）: 保存される値を出す
+    // ============================================================
+
+    private const NOTE_COMPUTE = '保存すると、紐付け先から計算したこの値になります。';
+    private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
+
+    /**
+     * 画面の JS を動かし、土地原価の表示に使う値を読む。
+     * view = housingLandCostView() の結果（willCompute・value・refreshOffered・unavailable）、shown = 手動 OFF の欄に出る文字。
+     */
+    private function landCostScreen(string $html, string $function, string $steps = '', array $responses = []): array
+    {
+        $run = $this->driveAlpine($html, $function, $this->xData($html, $function), $steps, $responses, true,
+            ['landCostView()', 'landCostShownText()', 'housingYen(computedLandCost)']);
+
+        return ['view' => $run['evaluated'][0], 'shown' => $run['evaluated'][1], 'yen' => $run['evaluated'][2]];
+    }
+
+    public function test_unchecking_manual_shows_and_saves_the_computed_value(): void
+    {
+        $property = $this->propertyOnLot(true);
+        $html = $this->htmlOf(route('housing.properties.edit', $property));
+        $this->assertTrue(str_contains($html, self::NOTE_COMPUTE), '計算し直すことを知らせる文が無い');
+
+        $screen = $this->landCostScreen($html, 'housingPropertyForm', 'data.isLandCostManual = false;');
+        $this->assertSame([true, 9600000, '9,600,000'], [$screen['view']['willCompute'], $screen['view']['value'], $screen['shown']], 'チェックを外しても計算値に替わらない');
+
+        $form = $this->propertyEditForm($property, 'data.isLandCostManual = false;');
+        $this->assertArrayNotHasKey('land_cost', $form['fields'], '手動 OFF の欄の値を送っている');
+        $this->saveProperty($property, $form);
+        $this->assertSame(9600000, $property->fresh()->land_cost, '画面に出した値と保存した値が違う');
+    }
+
+    public function test_a_stale_automatic_value_offers_the_refresh(): void
+    {
+        $property = $this->propertyOnLot(false);
+        $html = $this->htmlOf(route('housing.properties.edit', $property));
+        $this->assertTrue(str_contains($html, 'name="refresh_land_cost"'), '「今の計算値にする」のチェックが無い');
+
+        $screen = $this->landCostScreen($html, 'housingPropertyForm');
+        $this->assertSame([false, 5000000, true, '9,600,000円'], [$screen['view']['willCompute'], $screen['view']['value'], $screen['view']['refreshOffered'], $screen['yen']]);
+
+        $this->saveProperty($property, $this->propertyEditForm($property));
+        $this->assertSame(self::MANUAL, $property->fresh()->land_cost, 'チェックを付けないのに値が動いた');
+
+        $screen = $this->landCostScreen($html, 'housingPropertyForm', 'data.refreshLandCost = true;');
+        $this->assertSame([true, 9600000, true], [$screen['view']['willCompute'], $screen['view']['value'], $screen['view']['refreshOffered']], 'チェックを付けたら外せるように出し続ける');
+        $form = $this->propertyEditForm($property, 'data.refreshLandCost = true;');
+        $this->assertSame('1', $form['fields']['refresh_land_cost'] ?? null);
+        $this->saveProperty($property, $form);
+        $this->assertSame(9600000, $property->fresh()->land_cost, '「今の計算値にする」を画面から送っても計算値にならない');
+    }
+
+    public function test_an_equal_value_offers_no_refresh(): void
+    {
+        $property = $this->propertyOnLot(false, null, ['land_cost' => 9600000]);
+
+        $screen = $this->landCostScreen($this->htmlOf(route('housing.properties.edit', $property)), 'housingPropertyForm');
+
+        $this->assertFalse($screen['view']['refreshOffered'], '保存値と計算値が同じなのに「今の計算値にする」を出した');
+        $this->assertArrayNotHasKey('refresh_land_cost', $this->propertyEditForm($property)['fields']);
+    }
+
+    public function test_an_uncomputable_link_says_so(): void
+    {
+        [$project, $two] = $this->pricedProject();
+        ReProjectLot::create(['project_id' => $project->id, 'lot_number' => 6, 'area_sqm' => 200, 'area_tsubo' => 60.5, 'selling_price' => null, 'status' => 'on_sale']);
+        $property = $this->propertyOnLot(true, $two);
+        $html = $this->htmlOf(route('housing.properties.edit', $property));
+        $this->assertTrue(str_contains($html, self::NOTE_UNAVAILABLE), '計算できないことを知らせる文が無い');
+
+        $screen = $this->landCostScreen($html, 'housingPropertyForm', 'data.isLandCostManual = false;');
+        $this->assertSame([true, null, ''], [$screen['view']['unavailable'], $screen['view']['value'], $screen['shown']]);
+
+        // 紐付けの無い新規登録では出さない（Review Focus 5）
+        $screen = $this->landCostScreen($this->htmlOf(route('housing.properties.create')), 'housingPropertyForm');
+        $this->assertSame([false, null], [$screen['view']['unavailable'], $screen['view']['value']]);
+    }
+
+    public function test_choosing_a_link_on_the_create_screen_shows_its_value(): void
+    {
+        [$project, , $four] = $this->pricedProject();
+        $html = $this->htmlOf(route('housing.properties.create'));
+
+        $screen = $this->landCostScreen($html, 'housingPropertyForm',
+            'data.landSourceType = "project_lot"; data.onSourceTypeChange(); data.selectedProjectId = "' . $project->id . '"; data.onProjectChange();
+             setImmediate(function () { data.selectedLotId = "' . $four->id . '"; data.onLotChange(); });',
+            [$this->apiResponse(route('api.housing.project-lots', ['project_id' => $project->id, 'exclude_hs' => 1]))]);
+        $this->assertSame([14400000, '14,400,000'], [$screen['view']['value'], $screen['shown']], '区画を選んでも計算値が出ない');
+
+        $procurement = $this->costedProcurement();
+        $bare = $this->procurement(['procurement_code' => 'RE-PRC-002']);
+        foreach ([[$procurement, 7850000, false], [$bare, null, true]] as [$chosen, $value, $unavailable]) {
+            $screen = $this->landCostScreen($html, 'housingPropertyForm',
+                'data.landSourceType = "procurement"; data.onSourceTypeChange(); data.selectedProcurementId = "' . $chosen->id . '"; data.onProcurementChange();',
+                [$this->apiResponse(route('api.housing.procurement-info', $chosen))]);
+            $this->assertSame([$value, $unavailable], [$screen['view']['value'], $screen['view']['unavailable']], $chosen->procurement_code . ' を選んだときの値');
+        }
+    }
+
+    public function test_typing_then_unchecking_keeps_the_saved_value(): void
+    {
+        $property = $this->propertyOnLot(false);
+        $steps = 'data.isLandCostManual = true; data.landCost = "7000000"; data.isLandCostManual = false;';
+
+        $screen = $this->landCostScreen($this->htmlOf(route('housing.properties.edit', $property)), 'housingPropertyForm', $steps);
+        $this->assertSame([5000000, '5,000,000'], [$screen['view']['value'], $screen['shown']], '打ってから外した値が出た（⑤ の別の形）');
+
+        $this->saveProperty($property, $this->propertyEditForm($property, $steps));
+        $this->assertSame(self::MANUAL, $property->fresh()->land_cost, '打ってから外した値を保存した（⑤ の別の形）');
+    }
+
+    public function test_the_choice_survives_an_input_error(): void
+    {
+        // 「今の計算値にする」は old() で戻す
+        $property = $this->propertyOnLot(false);
+        $form = $this->fill($this->propertyEditForm($property, 'data.refreshLandCost = true;'), ['property_name' => '']);
+        $back = $this->landed($this->submit($form, route('housing.properties.edit', $property)));
+        $screen = $this->landCostScreen($back, 'housingPropertyForm');
+        $this->assertSame([true, 9600000], [$screen['view']['willCompute'], $screen['view']['value']], '入力エラーで戻ると「今の計算値にする」が外れた');
+        $this->assertSame(self::MANUAL, $property->fresh()->land_cost);
+
+        // 「保存済みが手動 ON か」は DB の値で決める（戻った画面の手動入力は送った OFF）
+        $manual = $this->propertyOnLot(true, null, ['property_code' => 'HS-002', 'property_name' => '平井 建売 2']);
+        $form = $this->fill($this->propertyEditForm($manual, 'data.isLandCostManual = false;'), ['property_name' => '']);
+        $back = $this->landed($this->submit($form, route('housing.properties.edit', $manual)));
+        $screen = $this->landCostScreen($back, 'housingPropertyForm');
+        $this->assertSame([true, 9600000], [$screen['view']['willCompute'], $screen['view']['value']], '戻った画面で、手入力をやめたことを忘れた');
+    }
+
+    public function test_the_order_form_shows_the_same(): void
+    {
+        [, $two] = $this->pricedProject('sold');
+        $manual = $this->customOrder(['status' => 'contracted', 'land_source_type' => 'project_lot', 're_project_lot_id' => $two->id, 'land_cost' => self::MANUAL, 'is_land_cost_manual' => true]);
+        $screen = $this->landCostScreen($this->htmlOf(route('housing.custom-orders.edit', $manual)), 'customOrderForm', 'data.isLandCostManual = false;');
+        $this->assertSame([true, 9600000, '9,600,000'], [$screen['view']['willCompute'], $screen['view']['value'], $screen['shown']]);
+        $this->saveOrder($manual, $this->orderEditForm($manual, 'data.isLandCostManual = false;'));
+        $this->assertSame(9600000, $manual->fresh()->land_cost);
+
+        $automatic = $this->customOrder(['order_code' => 'CO-002', 'status' => 'contracted', 'land_source_type' => 'project_lot', 're_project_lot_id' => $two->id, 'land_cost' => self::MANUAL, 'is_land_cost_manual' => false]);
+        $html = $this->htmlOf(route('housing.custom-orders.edit', $automatic));
+        $this->assertTrue(str_contains($html, 'name="refresh_land_cost"'));
+        $screen = $this->landCostScreen($html, 'customOrderForm');
+        $this->assertSame([5000000, true, '9,600,000円'], [$screen['view']['value'], $screen['view']['refreshOffered'], $screen['yen']]);
+        $this->saveOrder($automatic, $this->orderEditForm($automatic, 'data.refreshLandCost = true;'));
+        $this->assertSame(9600000, $automatic->fresh()->land_cost);
     }
 
     // ============================================================

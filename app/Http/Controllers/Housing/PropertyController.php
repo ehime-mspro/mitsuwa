@@ -99,8 +99,9 @@ class PropertyController extends Controller
 
         // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id'), null);
+        $computedLandCost = $this->computedLandCost(null);
 
-        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs', 'lotSelection'));
+        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost'));
     }
 
     /**
@@ -209,8 +210,9 @@ class PropertyController extends Controller
         }
 
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $property->re_project_lot_id), $property->id);
+        $computedLandCost = $this->computedLandCost($property);
 
-        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs', 'lotSelection'));
+        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost'));
     }
 
     /**
@@ -504,6 +506,17 @@ class PropertyController extends Controller
         }
 
         $validated['land_cost'] = HousingLandCost::whenAutomatic($current, $validated, $request->boolean('refresh_land_cost'));
+    }
+
+    /**
+     * 画面に出す「今の紐付け先から計算した土地原価」（入力エラーで戻った画面は選んでいた紐付け先。判断待ち ⑤）
+     */
+    private function computedLandCost(?HsProperty $property): ?int
+    {
+        $type = old('land_source_type', $property?->land_source_type?->value);
+
+        return HousingLandCost::forLink(is_string($type) ? $type : null,
+            old('re_project_lot_id', $property?->re_project_lot_id), old('re_procurement_id', $property?->re_procurement_id));
     }
 
     /**
