@@ -196,4 +196,115 @@ class LandLockTest extends HousingScreenTestCase
         $this->assertFlash($html, 'success', '建売物件「HS-001」を更新しました。');
         $this->assertSame($b->id, $property->fresh()->re_project_lot_id);
     }
+
+    // ============================================================
+    // 注文住宅の編集（契約済みなら土地を読み取り専用で出し、保存でも断る）
+    // ============================================================
+
+    private const ORDER_NOTICE = '契約済みのため、土地の紐付け（種別・区画・仕入れ案件）は変えられません。変えるときは、ステータスを「見積り」以前に戻して保存してから変えてください。';
+
+    /** 区画 A に建つ注文住宅と、同じ分譲地の区画 B（販売中） */
+    private function orderOnLot(string $status): array
+    {
+        $project = $this->project();
+        $a = $this->lot($project, 2, 12000000, in_array($status, ['consultation', 'design', 'estimation'], true) ? 'on_sale' : 'sold');
+        $b = $this->lot($project, 4);
+        $order = $this->customOrder(['status' => $status, 'land_source_type' => 'project_lot', 're_project_lot_id' => $a->id]);
+
+        return [$order, $a, $b];
+    }
+
+    private function orderEditForm(HsCustomOrder $order, ?string $html = null, string $js = ''): array
+    {
+        return $this->browserForm($html ?? $this->htmlOf(route('housing.custom-orders.edit', $order)),
+            'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm', $js);
+    }
+
+    public function test_a_contracted_order_shows_its_land_read_only_and_saves_as_shown(): void
+    {
+        [$order, $a] = $this->orderOnLot('contracted');
+        $url = route('housing.custom-orders.edit', $order);
+        $html = $this->htmlOf($url);
+
+        $this->assertFalse(str_contains($html, 'type="radio" name="land_source_type"'), '契約済みなのに土地種別を選べる');
+        $this->assertFalse(str_contains($html, 'name="re_project_lot_id" x-model'), '契約済みなのに区画を選べる');
+        $this->assertTrue(str_contains($html, e(self::ORDER_NOTICE)), '土地を変えられない理由の案内が無い');
+        $form = $this->orderEditForm($order, $html);
+        $this->assertSame(['project_lot', (string) $a->id], [$form['fields']['land_source_type'], $form['fields']['re_project_lot_id'] ?? null]);
+        $form = $this->fill($form, ['notes' => '外構は別途']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
+        $order->refresh();
+        $this->assertSame([$a->id, '外構は別途', 'sold'], [$order->re_project_lot_id, $order->notes, $a->fresh()->status->value]);
+    }
+
+    public function test_a_contracted_order_refuses_another_lot_or_customer_land(): void
+    {
+        [$order, $a, $b] = $this->orderOnLot('contracted');
+        $url = route('housing.custom-orders.edit', $order);
+
+        // 手で組んだ送信・古い画面からの送信: 1) 区画を B に 2) お客様の土地に
+        foreach ([['re_project_lot_id' => (string) $b->id], ['land_source_type' => 'customer_land']] as $tampered) {
+            $form = $this->orderEditForm($order);
+            $form['fields'] = array_merge($form['fields'], $tampered);
+
+            $html = $this->landed($this->submit($form, $url));
+
+            $this->assertErrorItem($html, HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+            $order->refresh();
+            $this->assertSame(['project_lot', $a->id], [$order->land_source_type->value, $order->re_project_lot_id], json_encode($tampered));
+            $this->assertSame(['sold', 'on_sale'], [$a->fresh()->status->value, $b->fresh()->status->value], json_encode($tampered));
+            $this->flushSession();
+        }
+    }
+
+    public function test_turning_the_status_back_and_changing_the_land_at_once_is_refused(): void
+    {
+        [$order, $a, $b] = $this->orderOnLot('contracted');
+        $url = route('housing.custom-orders.edit', $order);
+        $form = $this->fill($this->orderEditForm($order), ['status' => 'estimation']);
+        // 手で組んだ送信: 同じ保存でステータスを戻しながら区画を変える（区画の連動は新しい区画を販売中にし、前の区画が販売済のまま残る）
+        $form['fields']['re_project_lot_id'] = (string) $b->id;
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+        $order->refresh();
+        $this->assertSame(['contracted', $a->id], [$order->status->value, $order->re_project_lot_id]);
+    }
+
+    public function test_turning_the_status_back_releases_the_lot_and_unlocks_the_land(): void
+    {
+        [$order, $a, $b] = $this->orderOnLot('contracted');
+        $url = route('housing.custom-orders.edit', $order);
+        $form = $this->fill($this->orderEditForm($order), ['status' => 'estimation']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
+        $this->assertSame('on_sale', $a->fresh()->status->value, 'ステータスを戻しても区画が販売中に戻らない');
+
+        $html = $this->htmlOf($url);
+        $this->assertTrue(str_contains($html, 'type="radio" name="land_source_type"'), '契約前に戻したのに土地を選べない');
+        $form = $this->orderEditForm($order, $html, 'data.selectedLotId = "' . $b->id . '"; data.onLotChange();');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
+        $this->assertSame($b->id, $order->fresh()->re_project_lot_id);
+    }
+
+    public function test_an_order_before_the_contract_still_changes_its_land(): void
+    {
+        [$order, , $b] = $this->orderOnLot('estimation');
+        $url = route('housing.custom-orders.edit', $order);
+        $form = $this->orderEditForm($order, null, 'data.selectedLotId = "' . $b->id . '"; data.onLotChange();');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
+        $this->assertSame($b->id, $order->fresh()->re_project_lot_id);
+    }
 }

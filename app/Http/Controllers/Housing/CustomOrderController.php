@@ -18,6 +18,7 @@ use App\Support\JapanTime;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class CustomOrderController extends Controller
 {
@@ -172,7 +173,7 @@ class CustomOrderController extends Controller
     {
         $oldStatus = $customOrder->status;
 
-        $validated = $this->validateOrder($request);
+        $validated = $this->validateOrder($request, current: $customOrder);
         $validated['updated_by'] = auth()->id();
 
         $this->setLandSourceForeignKeys($validated);
@@ -348,13 +349,18 @@ class CustomOrderController extends Controller
 
     /**
      * バリデーション
+     *
+     * $current は編集する注文住宅（登録は null）。契約済み（保存済みのステータスが「契約」以降）の土地の紐付けは
+     * 変えさせない（判断待ち ④・案 B。区画の販売済はステータスが「契約」をまたぐときしか動かないので、
+     * 契約のあとで区画を変えると前の区画が販売済のまま・新しい区画が販売中のまま残る）。
+     * ⚠ after のフックで見る（ほかの誤りと一度に出す。Bug #112）。画面は契約済みなら土地を読み取り専用で出す。
      */
-    private function validateOrder(Request $request, bool $creating = false): array
+    private function validateOrder(Request $request, bool $creating = false, ?HsCustomOrder $current = null): array
     {
         $statuses = implode(',', array_column(CustomOrderStatus::cases(), 'value'));
         $sourceTypes = implode(',', array_column(HousingLandSourceType::cases(), 'value'));
 
-        return $request->validate([
+        return Validator::make($request->all(), [
             // 買主（登録だけ。編集では見ない＝exclude。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
             'customer_id'               => $creating ? ['required', 'integer', 'exists:buyers,id'] : 'exclude',
             'order_name'                => 'required|string|max:100',
@@ -388,7 +394,11 @@ class CustomOrderController extends Controller
         ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」）
             'address' => '所在地',
-        ]);
+        ])->after(function ($validator) use ($current, $request) {
+            if ($current?->refusesLandChange($request->all())) {
+                $validator->errors()->add('land_source_type', HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+            }
+        })->validate();
     }
 
     /**
