@@ -313,7 +313,11 @@
 
 @php
     // Alpine.js初期値
-    $landSourceTypeValue = old('land_source_type', $hsCustomOrder->land_source_type?->value ?? 'procurement');
+    // 契約済みの注文住宅は土地の紐付けを読み取り専用で出す（判断待ち ④・案 B）。保存済みの値を送る（空なら空。'procurement' の既定を使わない）
+    $landLocked = $hsCustomOrder->isLandLockedByContract();
+    $landSourceTypeValue = $landLocked
+        ? ($hsCustomOrder->land_source_type?->value ?? '')
+        : old('land_source_type', $hsCustomOrder->land_source_type?->value ?? 'procurement');
     $isLandCostManualValue = (bool) old('is_land_cost_manual', $hsCustomOrder->is_land_cost_manual);
     $reProjectLotIdValue = old('re_project_lot_id', $hsCustomOrder->re_project_lot_id);
     $reProcurementIdValue = old('re_procurement_id', $hsCustomOrder->re_procurement_id);
@@ -345,6 +349,11 @@
     <div class="hc-info-bar">
         土地種別により入力項目が変化します。顧客所有地の場合は土地販売価格・土地原価の入力欄は表示されません。
     </div>
+    @if($landLocked)
+        <div class="hc-info-bar">
+            契約済みのため、土地の紐付け（種別・区画・仕入れ案件）は変えられません。変えるときは、注文住宅の画面でステータスを「見積り」以前に戻して保存してから変えてください。
+        </div>
+    @endif
 
     @if($errors->any())
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
@@ -366,29 +375,34 @@
                 <span class="bar"></span>
                 <h2>土地種別</h2>
             </div>
-            <div class="hc-radio-row">
-                <label class="hc-radio-option" :class="{ 'selected': landSourceType === 'project_lot' }">
-                    <div>
-                        <input type="radio" name="land_source_type" value="project_lot" x-model="landSourceType">
-                        <span class="label">分譲地</span>
-                    </div>
-                    <div class="desc">自社分譲地区画</div>
-                </label>
-                <label class="hc-radio-option" :class="{ 'selected': landSourceType === 'procurement' }">
-                    <div>
-                        <input type="radio" name="land_source_type" value="procurement" x-model="landSourceType">
-                        <span class="label">仕入れ土地</span>
-                    </div>
-                    <div class="desc">仕入れ土地</div>
-                </label>
-                <label class="hc-radio-option" :class="{ 'selected': landSourceType === 'customer_land' }">
-                    <div>
-                        <input type="radio" name="land_source_type" value="customer_land" x-model="landSourceType">
-                        <span class="label">顧客所有地</span>
-                    </div>
-                    <div class="desc">顧客の土地</div>
-                </label>
-            </div>
+            @if($landLocked)
+                <input type="hidden" name="land_source_type" value="{{ $landSourceTypeValue }}">
+                <p class="text-sm text-gray-700">{{ $hsCustomOrder->land_source_type?->label() ?? '—' }}（変更不可）</p>
+            @else
+                <div class="hc-radio-row">
+                    <label class="hc-radio-option" :class="{ 'selected': landSourceType === 'project_lot' }">
+                        <div>
+                            <input type="radio" name="land_source_type" value="project_lot" x-model="landSourceType">
+                            <span class="label">分譲地</span>
+                        </div>
+                        <div class="desc">自社分譲地区画</div>
+                    </label>
+                    <label class="hc-radio-option" :class="{ 'selected': landSourceType === 'procurement' }">
+                        <div>
+                            <input type="radio" name="land_source_type" value="procurement" x-model="landSourceType">
+                            <span class="label">仕入れ土地</span>
+                        </div>
+                        <div class="desc">仕入れ土地</div>
+                    </label>
+                    <label class="hc-radio-option" :class="{ 'selected': landSourceType === 'customer_land' }">
+                        <div>
+                            <input type="radio" name="land_source_type" value="customer_land" x-model="landSourceType">
+                            <span class="label">顧客所有地</span>
+                        </div>
+                        <div class="desc">顧客の土地</div>
+                    </label>
+                </div>
+            @endif
             @error('land_source_type') <p class="text-xs text-red-600 mt-2">{{ $message }}</p> @enderror
         </div>
 
@@ -399,43 +413,73 @@
                 <h2>建築土地</h2>
             </div>
 
-            {{-- 分譲地区画 --}}
-            <div x-show="landSourceType === 'project_lot'" style="display:none;">
-                <div class="hc-field">
-                    <label class="field-label">分譲地区画</label>
-                    <select name="re_project_lot_id" class="hc-select" x-model="reProjectLotId">
-                        <option value="">— 選択してください</option>
-                        @foreach($projectLots as $lot)
-                            @php
-                                $project = $lot->project;
-                                $optionLabel = ($project ? $project->project_code . ' ' . $project->project_name . ' > ' : '') . $lot->lot_number . '号地';
-                            @endphp
-                            <option value="{{ $lot->id }}" @selected($reProjectLotIdValue == $lot->id)>{{ $optionLabel }}</option>
-                        @endforeach
-                    </select>
-                    @error('re_project_lot_id') <p class="error-msg">{{ $message }}</p> @enderror
-                    <template x-if="reProjectLotId && projectLotUrls[reProjectLotId]">
-                        <a class="hc-land-link" :href="projectLotUrls[reProjectLotId]" target="_blank" rel="noopener">→ 分譲地を開く</a>
-                    </template>
+            @if($landLocked)
+                @if($hsCustomOrder->land_source_type?->value === 'project_lot')
+                    <input type="hidden" name="re_project_lot_id" value="{{ $hsCustomOrder->re_project_lot_id }}">
+                    <div class="hc-field">
+                        <label class="field-label">分譲地区画（変更不可）</label>
+                        @if($hsCustomOrder->projectLot)
+                            <p class="text-sm text-gray-700">{{ ($hsCustomOrder->projectLot->project ? $hsCustomOrder->projectLot->project->project_code . ' ' . $hsCustomOrder->projectLot->project->project_name . ' > ' : '') . $hsCustomOrder->projectLot->lot_number . '号地' }}</p>
+                            @if($hsCustomOrder->projectLot->project)
+                                <a class="hc-land-link" href="{{ route('realestate.projects.show', $hsCustomOrder->projectLot->project) }}" target="_blank" rel="noopener">→ 分譲地を開く</a>
+                            @endif
+                        @else
+                            <p class="text-sm text-gray-500">—</p>
+                        @endif
+                    </div>
+                @elseif($hsCustomOrder->land_source_type?->value === 'procurement')
+                    <input type="hidden" name="re_procurement_id" value="{{ $hsCustomOrder->re_procurement_id }}">
+                    <div class="hc-field">
+                        <label class="field-label">仕入れ案件（変更不可）</label>
+                        @if($hsCustomOrder->procurement)
+                            <p class="text-sm text-gray-700">{{ $hsCustomOrder->procurement->procurement_code }} {{ $hsCustomOrder->procurement->property_name }}</p>
+                            <a class="hc-land-link" href="{{ route('realestate.procurements.show', $hsCustomOrder->procurement) }}" target="_blank" rel="noopener">→ 仕入れ案件を開く</a>
+                        @else
+                            <p class="text-sm text-gray-500">—</p>
+                        @endif
+                    </div>
+                @else
+                    <p class="text-sm text-gray-500">—</p>
+                @endif
+            @else
+                {{-- 分譲地区画 --}}
+                <div x-show="landSourceType === 'project_lot'" style="display:none;">
+                    <div class="hc-field">
+                        <label class="field-label">分譲地区画</label>
+                        <select name="re_project_lot_id" class="hc-select" x-model="reProjectLotId">
+                            <option value="">— 選択してください</option>
+                            @foreach($projectLots as $lot)
+                                @php
+                                    $project = $lot->project;
+                                    $optionLabel = ($project ? $project->project_code . ' ' . $project->project_name . ' > ' : '') . $lot->lot_number . '号地';
+                                @endphp
+                                <option value="{{ $lot->id }}" @selected($reProjectLotIdValue == $lot->id)>{{ $optionLabel }}</option>
+                            @endforeach
+                        </select>
+                        @error('re_project_lot_id') <p class="error-msg">{{ $message }}</p> @enderror
+                        <template x-if="reProjectLotId && projectLotUrls[reProjectLotId]">
+                            <a class="hc-land-link" :href="projectLotUrls[reProjectLotId]" target="_blank" rel="noopener">→ 分譲地を開く</a>
+                        </template>
+                    </div>
                 </div>
-            </div>
 
-            {{-- 仕入れ案件 --}}
-            <div x-show="landSourceType === 'procurement'" style="display:none;">
-                <div class="hc-field">
-                    <label class="field-label">仕入れ案件</label>
-                    <select name="re_procurement_id" class="hc-select" x-model="reProcurementId">
-                        <option value="">— 選択してください</option>
-                        @foreach($procurements as $p)
-                            <option value="{{ $p->id }}" @selected($reProcurementIdValue == $p->id)>{{ $p->procurement_code }} {{ $p->property_name }}</option>
-                        @endforeach
-                    </select>
-                    @error('re_procurement_id') <p class="error-msg">{{ $message }}</p> @enderror
-                    <template x-if="reProcurementId && procurementUrls[reProcurementId]">
-                        <a class="hc-land-link" :href="procurementUrls[reProcurementId]" target="_blank" rel="noopener">→ 仕入れ案件を開く</a>
-                    </template>
+                {{-- 仕入れ案件 --}}
+                <div x-show="landSourceType === 'procurement'" style="display:none;">
+                    <div class="hc-field">
+                        <label class="field-label">仕入れ案件</label>
+                        <select name="re_procurement_id" class="hc-select" x-model="reProcurementId">
+                            <option value="">— 選択してください</option>
+                            @foreach($procurements as $p)
+                                <option value="{{ $p->id }}" @selected($reProcurementIdValue == $p->id)>{{ $p->procurement_code }} {{ $p->property_name }}</option>
+                            @endforeach
+                        </select>
+                        @error('re_procurement_id') <p class="error-msg">{{ $message }}</p> @enderror
+                        <template x-if="reProcurementId && procurementUrls[reProcurementId]">
+                            <a class="hc-land-link" :href="procurementUrls[reProcurementId]" target="_blank" rel="noopener">→ 仕入れ案件を開く</a>
+                        </template>
+                    </div>
                 </div>
-            </div>
+            @endif
         </div>
 
         {{-- 基本情報 --}}

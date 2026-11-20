@@ -307,4 +307,104 @@ class LandLockTest extends HousingScreenTestCase
         $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
         $this->assertSame($b->id, $order->fresh()->re_project_lot_id);
     }
+
+    // ============================================================
+    // 契約一覧から開く注文住宅の契約の編集（同じく固定。区画の販売済をまったく動かさない画面）
+    // ============================================================
+
+    private const CONTRACT_NOTICE = '契約済みのため、土地の紐付け（種別・区画・仕入れ案件）は変えられません。変えるときは、注文住宅の画面でステータスを「見積り」以前に戻して保存してから変えてください。';
+
+    /** 契約の編集の画面が保存に要る項目（契約日・買主・金額）を持つ注文住宅 */
+    private function orderForContractEdit(array $overrides): HsCustomOrder
+    {
+        return $this->customOrder(array_merge([
+            'contract_date' => '2026-09-10', 'customer_id' => $this->buyer()->id,
+            'building_contract_price' => 25000000, 'building_cost' => 20000000,
+        ], $overrides));
+    }
+
+    private function contractEditForm(HsCustomOrder $order, string $html, string $js = ''): array
+    {
+        return $this->composedForm($html, route('housing.contracts.update-custom-order', $order), 'customOrderEditForm', null,
+            ['datePicker' => '', 'buyerSelect' => ''], $js);
+    }
+
+    public function test_the_contract_edit_shows_the_land_read_only_and_saves_as_shown(): void
+    {
+        $project = $this->project();
+        $a = $this->lot($project, 2, 9000000, 'sold');
+        $order = $this->orderForContractEdit(['status' => 'contracted', 'land_source_type' => 'project_lot', 're_project_lot_id' => $a->id]);
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $html = $this->htmlOf($url);
+
+        $this->assertFalse(str_contains($html, 'type="radio" name="land_source_type"'), '契約済みなのに土地種別を選べる');
+        $this->assertFalse(str_contains($html, 'name="re_project_lot_id" class="hc-select"'), '契約済みなのに区画を選べる');
+        $this->assertTrue(str_contains($html, e(self::CONTRACT_NOTICE)), '土地を変えられない理由の案内が無い');
+        $form = $this->contractEditForm($order, $html);
+        $this->assertSame(['project_lot', (string) $a->id], [$form['fields']['land_source_type'], $form['fields']['re_project_lot_id'] ?? null]);
+        $form = $this->fill($form, ['building_contract_price' => '26000000']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約を更新しました。');
+        $order->refresh();
+        $this->assertSame([26000000, $a->id], [$order->building_contract_price, $order->re_project_lot_id]);
+    }
+
+    public function test_the_contract_edit_refuses_another_land(): void
+    {
+        $project = $this->project();
+        $a = $this->lot($project, 2, 9000000, 'sold');
+        $b = $this->lot($project, 4);
+        $order = $this->orderForContractEdit(['status' => 'contracted', 'land_source_type' => 'project_lot', 're_project_lot_id' => $a->id]);
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->contractEditForm($order, $this->htmlOf($url));
+        // 手で組んだ送信・古い画面からの送信で区画を変える
+        $form['fields']['re_project_lot_id'] = (string) $b->id;
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+        $this->assertSame($a->id, $order->fresh()->re_project_lot_id);
+    }
+
+    public function test_the_contract_edit_saves_a_contracted_order_without_a_land_type(): void
+    {
+        $order = $this->orderForContractEdit(['status' => 'contracted']);
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->contractEditForm($order, $this->htmlOf($url));
+        $this->assertSame('', $form['fields']['land_source_type'] ?? null, '種別が空の注文住宅の画面が種別を送っていない');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約を更新しました。');
+        $this->assertNull($order->fresh()->land_source_type);
+    }
+
+    public function test_the_contract_edit_of_an_order_without_a_land_type_survives_a_request_without_the_field(): void
+    {
+        $order = $this->orderForContractEdit(['status' => 'contracted']);
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->contractEditForm($order, $this->htmlOf($url));
+        // 手で組んだ送信: 種別の欄が丸ごと無い（保存済みも空なので固定の判定は通る。読み方が欄の有無を前提にすると 500）
+        unset($form['fields']['land_source_type']);
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約を更新しました。');
+        $this->assertNull($order->fresh()->land_source_type);
+    }
+
+    public function test_the_contract_edit_of_an_order_before_the_contract_can_change_the_land(): void
+    {
+        $order = $this->orderForContractEdit(['status' => 'estimation', 'land_source_type' => 'procurement', 're_procurement_id' => $this->procurement()->id]);
+        $url = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->contractEditForm($order, $this->htmlOf($url), 'data.landSourceType = "customer_land";');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約を更新しました。');
+        $order->refresh();
+        $this->assertSame(['customer_land', null], [$order->land_source_type->value, $order->re_procurement_id]);
+    }
 }

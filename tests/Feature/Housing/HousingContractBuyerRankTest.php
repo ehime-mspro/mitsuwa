@@ -268,6 +268,8 @@ class HousingContractBuyerRankTest extends TestCase
             'is_land_cost_manual' => 0,
             'tax_rate'            => 10.00,
             'contract_date'       => '2026-07-19',
+            // 契約一覧からの編集（customOrderListUpdatePayload）と同じ土地にしておく（契約済みの土地は変えられない。LandLockTest）
+            'land_source_type'    => HousingLandSourceType::CustomerLand->value,
         ];
     }
 

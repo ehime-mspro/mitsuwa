@@ -65,7 +65,8 @@ class JsEmbeddingTest extends HousingScreenTestCase
         $run = $this->driveAlpine($html, 'datePicker', $this->xData($html, 'datePicker'), '', [], true, ['selected === null']);
         $this->assertSame([false], $run['evaluated'], '入力エラーで戻った契約日が画面の JS を壊す');
 
-        $order = $this->customOrder(['status' => 'contracted', 'contract_date' => '2026-09-10', 'customer_id' => $this->buyer('佐藤', '花子')->id]);
+        // ⚠ 契約前の注文住宅で見る — 契約済みは土地の紐付けを読み取り専用で出し、JS には入力でなく保存済みの値を渡す（LandLockTest）
+        $order = $this->customOrder(['status' => 'estimation', 'contract_date' => '2026-09-10', 'customer_id' => $this->buyer('佐藤', '花子')->id]);
         $url = route('housing.contracts.edit-custom-order', $order);
         $this->actingAs($this->user)->from($url)->put(route('housing.contracts.update-custom-order', $order), ['land_source_type' => 'project_lot', 're_project_lot_id' => "1'\\"]);
         $html = $this->htmlOf($url);

@@ -86,9 +86,14 @@ class ContractScreensTest extends HousingScreenTestCase
         $this->assertSame([26000000, $lot->id, $this->user->id], [$order->building_contract_price, $order->re_project_lot_id, $order->updated_by]);
     }
 
+    /**
+     * 土地の種別を選んだのに紐付け先が空の保存は断る（D1）。
+     * ⚠ 契約済みの注文住宅は土地を変えられない（読み取り専用。LandLockTest）ので、契約前の注文住宅で見る
+     *   （この画面は契約一覧から開くが、URL を直に開けば契約前の注文住宅も編集できる）。
+     */
     public function test_a_custom_order_contract_on_company_land_without_a_link_is_refused(): void
     {
-        $order = $this->customOrder(['status' => 'contracted', 'contract_date' => '2026-09-10', 'customer_id' => $this->buyer()->id,
+        $order = $this->customOrder(['status' => 'estimation', 'contract_date' => '2026-09-10', 'customer_id' => $this->buyer()->id,
             'land_source_type' => 'customer_land', 'building_contract_price' => 25000000, 'building_cost' => 20000000]);
         $url = route('housing.contracts.edit-custom-order', $order);
         $form = $this->composedForm($this->htmlOf($url), route('housing.contracts.update-custom-order', $order), 'customOrderEditForm', null,

@@ -16,6 +16,7 @@ use App\Support\JapanTime;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 /**
@@ -332,13 +333,18 @@ class HsContractListController extends Controller
      */
     public function updateCustomOrder(Request $request, HsCustomOrder $hsCustomOrder)
     {
-        $validated = $request->validate([
+        // 契約済み（保存済みのステータスが「契約」以降）の土地の紐付けは変えさせない（判断待ち ④・案 B。この画面は区画の販売済を
+        // まったく動かさないので、変えると前の区画が販売済のまま・新しい区画が販売中のまま残る）。画面は読み取り専用で出す。
+        // ⚠ 固定のときは種別を必須にしない — 種別が空の契約済みの注文住宅も、画面のまま保存できるように（固定の判定が「今と同じ」を見る）。
+        // ⚠ after のフックで見る（ほかの誤りと一度に出す。Bug #112）。
+        $landLocked = $hsCustomOrder->isLandLockedByContract();
+        $validated = Validator::make($request->all(), [
             'customer_name'           => 'required|string|max:100',
             'customer_id'             => 'required|integer|exists:buyers,id',
             'created_by'              => 'nullable|integer|exists:users,id',
             'contract_date'           => 'required|date',
             'notes'                   => 'nullable|string|max:5000',
-            'land_source_type'        => ['required', Rule::in([
+            'land_source_type'        => ['nullable', Rule::requiredIf(! $landLocked), Rule::in([
                 HousingLandSourceType::ProjectLot->value,
                 HousingLandSourceType::Procurement->value,
                 HousingLandSourceType::CustomerLand->value,
@@ -363,11 +369,16 @@ class HsContractListController extends Controller
         ], [
             're_project_lot_id.required_if' => '土地種別が分譲地のときは、分譲地区画を選んでください。',
             're_procurement_id.required_if' => '土地種別が仕入れ土地のときは、仕入れ案件を選んでください。',
-        ]);
+        ])->after(function ($validator) use ($hsCustomOrder, $request) {
+            if ($hsCustomOrder->refusesLandChange($request->all())) {
+                $validator->errors()->add('land_source_type', HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+            }
+        })->validate();
 
         DB::transaction(function () use ($validated, $request, $hsCustomOrder) {
             $isManual = $request->boolean('is_land_cost_manual');
-            $sourceType = $validated['land_source_type'];
+            // ⚠ 固定のときは種別が空（欄が無い送信も、保存済みが空なら固定の判定を通る）でありうる（Bug #92 の形）
+            $sourceType = $validated['land_source_type'] ?? null;
 
             // フェーズ2: 買主マスタを必須化し customer_name を買主名で上書き
             $buyer = Buyer::withTrashed()->findOrFail($validated['customer_id']);
