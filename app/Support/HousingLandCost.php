@@ -18,7 +18,7 @@ use App\Models\ReProjectLot;
  *     → 紐付け先から計算した値（計算できなければ空）
  *   - それ以外（チェックに触らず保存） → 保存済みの値のまま（「古い契約の原価が勝手に動かないように」。利用者の方針）
  *
- * ⚠ 画面の JS（housing/_land_cost_script の housingLandCostView()）が同じ決まりを写している。片方だけ変えない（Bug #41。
+ * ⚠ 画面の JS（housing/_land_cost_functions の housingLandCostView()）が同じ決まりを写している。片方だけ変えない（Bug #41。
  *   LandCostViewParityTest が同じ場面で突き合わせる）。
  * ⚠ 区画の按分は区画の一覧（ReProject::housingLotOptions()）と同じ式（ReProject::housingLotLandCost()）。
  */
