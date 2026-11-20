@@ -155,7 +155,8 @@ class AmountLimitTest extends HousingScreenTestCase
                 $checked++;
                 // 上限は max（定数を連結するので文字列は `max:` で終わる）・between・既存の行（exists）のどれか
                 $ok = $bounded($rule);
-                // 配列で書いた規則（`['nullable', 'integer', 'min:0', 'max:' . …]`）は、同じ配列の残りの要素に上限があるかを見る。
+                // 配列で書いた規則（`['nullable', 'integer', 'min:0', 'max:' . …]`）は、同じ配列の残りの要素に上限があるかを見る
+                // （文字列の max・between・exists か、Rule::exists / Rule::in。DAD の走査と同じ読み方。注文住宅の買主の Rule::in＝判断待ち ⑥）。
                 // ⚠ `|` でつないだ規則の文字列は自分の中だけで見る（後ろを見ると、次の項目の上限に当たって素通りする）
                 for ($j = $i + 1, $depth = 0; ! $ok && ! str_contains($rule, '|') && $j < count($tokens); $j++) {
                     $t = $tokens[$j];
@@ -167,6 +168,8 @@ class AmountLimitTest extends HousingScreenTestCase
                         }
                     } elseif ($depth === 0 && is_array($t) && $t[0] === T_CONSTANT_ENCAPSED_STRING) {
                         $ok = $bounded(substr($t[1], 1, -1));
+                    } elseif ($depth === 0 && is_array($t) && $t[0] === T_STRING && in_array($t[1], ['exists', 'in'], true) && ($tokens[$j - 1][0] ?? null) === T_DOUBLE_COLON) {
+                        $ok = true;
                     } elseif ($depth === 0 && $t === ';') {
                         break;
                     }

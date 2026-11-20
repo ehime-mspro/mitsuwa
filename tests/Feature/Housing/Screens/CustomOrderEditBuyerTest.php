@@ -135,6 +135,39 @@ class CustomOrderEditBuyerTest extends HousingScreenTestCase
         $this->assertSame($buyer->id, $order->fresh()->customer_id);
     }
 
+    /**
+     * 編集の保存は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（手で番号を書き換えた送信。セキュリティの点検の指摘）。
+     * ⚠ 通すと、ほかの部署の買主の名前が注文住宅に入り、契約済みならその買主が住宅事業に足されて連絡先まで見える。
+     * ⚠ 登録の保存は前の設計（買主ランクの自動成約 §7.1 #11）でわざと広く受け付けている（HousingContractBuyerRankTest）。今回は変えない。
+     */
+    public static function unofferedBuyers(): array
+    {
+        return [
+            '住宅事業にいない買主' => ['outsider'],
+            '削除済みの買主' => ['deleted'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unofferedBuyers')]
+    public function test_a_buyer_the_screen_does_not_offer_cannot_be_chosen(string $case): void
+    {
+        $current = $this->buyer();
+        $order = $this->linkedOrder($current, ['status' => 'contracted', 'contract_date' => '2026-09-10']);
+        $other = $case === 'outsider' ? Buyer::create(['last_name' => '部外', 'first_name' => '花子']) : $this->buyer('削除', '済子');
+        if ($case === 'deleted') {
+            $other->delete();
+        }
+        $form = $this->fill($this->customOrderEditForm($order), ['customer_id' => (string) $other->id]);
+
+        $html = $this->save($order, $form);
+
+        $this->assertErrorItem($html, trans('validation.in', ['attribute' => '顧客']));
+        $this->assertSame([$current->id, '山田 太郎'], [$order->fresh()->customer_id, $order->fresh()->customer_name], '選択肢に無い買主が紐付いた');
+        if ($case === 'outsider') {
+            $this->assertNull($other->fresh()->getDepartmentPivot('housing'), 'ほかの部署の買主が住宅事業に足された');
+        }
+    }
+
     public function test_changing_the_buyer_of_a_contracted_order_marks_the_new_buyer_contracted(): void
     {
         $a = $this->buyer('旧', '一郎');

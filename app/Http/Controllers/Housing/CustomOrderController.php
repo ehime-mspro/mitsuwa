@@ -20,6 +20,7 @@ use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class CustomOrderController extends Controller
 {
@@ -72,7 +73,7 @@ class CustomOrderController extends Controller
         $projectsForJs = $this->getProjectsForJs();
         $procurementsForJs = $this->getProcurementsForJs();
         $defaultTaxRate = $this->getDefaultTaxRate();
-        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
+        $buyers = $this->selectableBuyers(null);
 
         // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id'));
@@ -166,14 +167,7 @@ class CustomOrderController extends Controller
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $customOrder->re_project_lot_id));
         $computedLandCost = $this->computedLandCost($customOrder);
 
-        // 買主マスタ（住宅事業所属。今の買主は SoftDelete されていても・住宅事業にいなくても選べるように足す。判断待ち ⑥）
-        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
-        if ($customOrder->customer_id) {
-            $current = Buyer::withTrashed()->find($customOrder->customer_id);
-            if ($current && !$buyers->contains('id', $current->id)) {
-                $buyers->push($current);
-            }
-        }
+        $buyers = $this->selectableBuyers($customOrder);
 
         return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost', 'buyers'));
     }
@@ -366,6 +360,25 @@ class CustomOrderController extends Controller
     // ================================================================
 
     /**
+     * 買主の選択肢（住宅事業の買主。編集は今の買主も、削除済み・住宅事業にいなくても足す＝保存で黙って別の人に変えない。判断待ち ⑥）。
+     * 画面の選択肢と編集の保存の入力チェックが同じ集合を使う（選択肢に出ていない買主を手で送っても通さない）。
+     *
+     * @return \Illuminate\Support\Collection<int, Buyer>
+     */
+    private function selectableBuyers(?HsCustomOrder $order): \Illuminate\Support\Collection
+    {
+        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
+        if ($order?->customer_id) {
+            $current = Buyer::withTrashed()->find($order->customer_id);
+            if ($current && !$buyers->contains('id', $current->id)) {
+                $buyers->push($current);
+            }
+        }
+
+        return $buyers->toBase();
+    }
+
+    /**
      * バリデーション
      *
      * $current は編集する注文住宅（登録は null）。契約済み（保存済みのステータスが「契約」以降）の土地の紐付けは
@@ -380,7 +393,11 @@ class CustomOrderController extends Controller
 
         return Validator::make($request->all(), [
             // 買主（登録・編集とも必須。判断待ち ⑥）。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121）
-            'customer_id'               => ['required', 'integer', 'exists:buyers,id'],
+            // 編集は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（手で番号を書き換えた送信で、ほかの部署の買主を紐付けさせない）。
+            // ⚠ 登録は前の設計（買主ランクの自動成約 §7.1 #11）で広く受け付けている（HousingContractBuyerRankTest が固定）。変えるなら別の判断
+            'customer_id'               => $current === null
+                ? ['required', 'integer', 'exists:buyers,id']
+                : ['required', 'integer', Rule::in($this->selectableBuyers($current)->pluck('id')->all())],
             'order_name'                => 'required|string|max:100',
             'status'                    => "required|in:{$statuses}",
             'customer_name'             => 'required|string|max:100',
