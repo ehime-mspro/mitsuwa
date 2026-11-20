@@ -136,8 +136,7 @@ class LandCostAutoTest extends HousingScreenTestCase
 
     private function orderEditForm(HsCustomOrder $order, string $js = ''): array
     {
-        return $this->browserForm($this->htmlOf(route('housing.custom-orders.edit', $order)),
-            'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm', $js);
+        return $this->customOrderEditForm($order, $js);
     }
 
     private function saveOrder(HsCustomOrder $order, array $form): string

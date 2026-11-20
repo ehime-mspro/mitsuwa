@@ -51,7 +51,7 @@ class AmountLimitTest extends HousingScreenTestCase
 
     private function orderEditForm(HsCustomOrder $order, string $steps = ''): array
     {
-        return $this->browserForm($this->htmlOf(route('housing.custom-orders.edit', $order)), 'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm', $steps);
+        return $this->customOrderEditForm($order, $steps);
     }
 
     public function test_a_custom_order_amount_over_the_limit_is_refused(): void

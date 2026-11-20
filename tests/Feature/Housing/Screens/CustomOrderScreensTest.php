@@ -73,7 +73,7 @@ class CustomOrderScreensTest extends HousingScreenTestCase
         $url = route('housing.custom-orders.edit', $order);
 
         // 区画には触らず、ほかの欄だけ直して保存する
-        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm');
+        $form = $this->customOrderEditForm($order);
         $this->assertSame([], $form['run']['requests'], '編集画面が区画の一覧を API から取り直している（サーバが描いた一覧を使う）');
         $this->assertSame(['PUT', 'project_lot', (string) $lot->id], [$form['fields']['_method'], $form['fields']['land_source_type'], $form['fields']['re_project_lot_id'] ?? null],
             '編集画面で今の区画が選ばれていない');
@@ -92,7 +92,7 @@ class CustomOrderScreensTest extends HousingScreenTestCase
         $order = $this->customOrder(['land_source_type' => 'procurement', 're_procurement_id' => $procurement->id]);
         $url = route('housing.custom-orders.edit', $order);
 
-        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm');
+        $form = $this->customOrderEditForm($order);
         $this->assertSame((string) $procurement->id, $form['fields']['re_procurement_id'] ?? null, '編集画面で今の仕入れ案件が選ばれていない');
 
         $html = $this->landed($this->submit($form, $url));
@@ -105,8 +105,7 @@ class CustomOrderScreensTest extends HousingScreenTestCase
     {
         $order = $this->customOrder(['land_source_type' => 'customer_land']);
         $url = route('housing.custom-orders.edit', $order);
-        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm',
-            'data.landSourceType = "procurement"; data.onSourceTypeChange();');
+        $form = $this->customOrderEditForm($order, 'data.landSourceType = "procurement"; data.onSourceTypeChange();');
 
         $html = $this->landed($this->submit($form, $url));
 

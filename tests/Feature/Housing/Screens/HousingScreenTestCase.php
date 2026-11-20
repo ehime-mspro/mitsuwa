@@ -183,17 +183,31 @@ abstract class HousingScreenTestCase extends TestCase
         ], $overrides));
     }
 
+    /** 注文住宅（既定で住宅事業の買主「山田 太郎」を紐付ける。編集画面の保存は買主が必須＝判断待ち ⑥。買主の無い案件は ['customer_id' => null]） */
     protected function customOrder(array $overrides = []): HsCustomOrder
     {
+        $buyer = array_key_exists('customer_id', $overrides) ? null : $this->buyer();
+
         return HsCustomOrder::create(array_merge([
             'order_code' => 'CO-001',
             'order_name' => '山田邸 新築工事',
             'status' => 'consultation',
+            'customer_id' => $buyer?->id,
             'customer_name' => '山田 太郎',
             'address' => '愛媛県松山市平井町1-2',
             'tax_rate' => 10,
             'created_by' => $this->user->id,
         ], $overrides));
+    }
+
+    /**
+     * 注文住宅の編集画面のフォーム（買主の選択は入れ子の部品 buyerSelect。$buyerSteps はその部品で走らせる JS＝chooseBuyer()）。
+     * ⚠ browserForm() で親だけを評価すると、部品の x-model（customerName）を親の状態で探して止まる
+     */
+    protected function customOrderEditForm(HsCustomOrder $order, string $steps = '', ?string $html = null, string $buyerSteps = '', array $responses = []): array
+    {
+        return $this->composedForm($html ?? $this->htmlOf(route('housing.custom-orders.edit', $order)), route('housing.custom-orders.update', $order),
+            'customOrderForm', null, ['buyerSelect' => $buyerSteps], $steps, $responses);
     }
 
     protected function contract(HsProperty $property, Buyer $buyer, array $overrides = []): HsContract

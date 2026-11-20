@@ -216,8 +216,7 @@ class LandLockTest extends HousingScreenTestCase
 
     private function orderEditForm(HsCustomOrder $order, ?string $html = null, string $js = ''): array
     {
-        return $this->browserForm($html ?? $this->htmlOf(route('housing.custom-orders.edit', $order)),
-            'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm', $js);
+        return $this->customOrderEditForm($order, $js, $html);
     }
 
     public function test_a_contracted_order_shows_its_land_read_only_and_saves_as_shown(): void

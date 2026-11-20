@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Housing\Screens;
 
+use App\Models\Buyer;
+
 /**
  * 住宅事業の画面が保存した値・入力エラーで戻った値を、画面の JavaScript に正しく渡す（H3。Bug #76 と同じ形）。
  *
@@ -40,18 +42,21 @@ class JsEmbeddingTest extends HousingScreenTestCase
         $this->assertSame(self::TRICKY, $again['fields']['address'], '入力エラーで戻ると所在地が変わる');
     }
 
-    public function test_the_custom_order_form_keeps_the_saved_customer_name_and_address(): void
+    /** 顧客名は買主の名前（編集画面も買主を選ぶ。判断待ち ⑥）。買主の名前は部品 buyerSelect に @js で渡る */
+    public function test_the_custom_order_form_keeps_the_saved_buyer_name_and_address(): void
     {
-        $order = $this->customOrder(['address' => self::TRICKY, 'customer_name' => "O'Brien & 山田\\"]);
+        $buyer = Buyer::create(['last_name' => "O'Brien & 山田\\", 'first_name' => '太郎']);
+        $buyer->addToDepartment('housing', '2026-09-01');
+        $order = $this->customOrder(['address' => self::TRICKY, 'customer_id' => $buyer->id, 'customer_name' => $buyer->full_name]);
         $url = route('housing.custom-orders.edit', $order);
 
-        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('housing.custom-orders.update', $order) . '"', 'customOrderForm');
-        $this->assertSame([self::TRICKY, "O'Brien & 山田\\"], [$form['fields']['address'], $form['fields']['customer_name']]);
+        $form = $this->customOrderEditForm($order);
+        $this->assertSame([self::TRICKY, "O'Brien & 山田\\ 太郎"], [$form['fields']['address'], $form['fields']['customer_name']]);
 
         $html = $this->landed($this->submit($form, $url));
 
         $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
-        $this->assertSame([self::TRICKY, "O'Brien & 山田\\"], [$order->fresh()->address, $order->fresh()->customer_name]);
+        $this->assertSame([self::TRICKY, "O'Brien & 山田\\ 太郎"], [$order->fresh()->address, $order->fresh()->customer_name]);
     }
 
     public function test_the_contract_edit_screens_survive_a_typed_value_after_an_input_error(): void

@@ -88,7 +88,7 @@ class CustomOrderController extends Controller
     public function store(Request $request)
     {
         // フェーズ2: 買主マスタ紐付けを必須化し、customer_name を買主名で上書き（連携漏れ防止。customer_id は validateOrder() が見る）
-        $validated = $this->validateOrder($request, creating: true);
+        $validated = $this->validateOrder($request);
         $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
         $validated['customer_id']   = $buyer->id;
         $validated['customer_name'] = $buyer->full_name;
@@ -166,7 +166,16 @@ class CustomOrderController extends Controller
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $customOrder->re_project_lot_id));
         $computedLandCost = $this->computedLandCost($customOrder);
 
-        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost'));
+        // 買主マスタ（住宅事業所属。今の買主は SoftDelete されていても・住宅事業にいなくても選べるように足す。判断待ち ⑥）
+        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
+        if ($customOrder->customer_id) {
+            $current = Buyer::withTrashed()->find($customOrder->customer_id);
+            if ($current && !$buyers->contains('id', $current->id)) {
+                $buyers->push($current);
+            }
+        }
+
+        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost', 'buyers'));
     }
 
     /**
@@ -178,6 +187,10 @@ class CustomOrderController extends Controller
         $oldStatus = $customOrder->status;
 
         $validated = $this->validateOrder($request, current: $customOrder);
+        // 登録と同じく買主を必須にし、customer_name を買主名で上書き（判断待ち ⑥。直す前は顧客名だけ変わり買主と食い違った）
+        $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
+        $validated['customer_id']   = $buyer->id;
+        $validated['customer_name'] = $buyer->full_name;
         $validated['updated_by'] = auth()->id();
 
         $this->setLandSourceForeignKeys($validated);
@@ -360,14 +373,14 @@ class CustomOrderController extends Controller
      * 契約のあとで区画を変えると前の区画が販売済のまま・新しい区画が販売中のまま残る）。
      * ⚠ after のフックで見る（ほかの誤りと一度に出す。Bug #112）。画面は契約済みなら土地を読み取り専用で出す。
      */
-    private function validateOrder(Request $request, bool $creating = false, ?HsCustomOrder $current = null): array
+    private function validateOrder(Request $request, ?HsCustomOrder $current = null): array
     {
         $statuses = implode(',', array_column(CustomOrderStatus::cases(), 'value'));
         $sourceTypes = implode(',', array_column(HousingLandSourceType::cases(), 'value'));
 
         return Validator::make($request->all(), [
-            // 買主（登録だけ。編集では見ない＝exclude。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
-            'customer_id'               => $creating ? ['required', 'integer', 'exists:buyers,id'] : 'exclude',
+            // 買主（登録・編集とも必須。判断待ち ⑥）。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121）
+            'customer_id'               => ['required', 'integer', 'exists:buyers,id'],
             'order_name'                => 'required|string|max:100',
             'status'                    => "required|in:{$statuses}",
             'customer_name'             => 'required|string|max:100',

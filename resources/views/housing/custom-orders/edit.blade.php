@@ -30,7 +30,7 @@
         @csrf
         @method('PUT')
 
-        @include('housing.custom-orders._form', ['customOrder' => $customOrder, 'projectsForJs' => $projectsForJs, 'procurementsForJs' => $procurementsForJs])
+        @include('housing.custom-orders._form', ['customOrder' => $customOrder, 'projectsForJs' => $projectsForJs, 'procurementsForJs' => $procurementsForJs, 'buyers' => $buyers])
 
         <x-form-actions submit-label="更新する" :cancel-url="route('housing.custom-orders.show', $customOrder)" />
     </form>
