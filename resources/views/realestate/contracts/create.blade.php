@@ -569,7 +569,7 @@ function contractForm() {
                     self.propertyName = data.property_name;
                     self.addressVal = data.address || '';
                     self.costAmount = data.cost_amount;
-                    // 仲介土地に切り替えたら建物側の入力を捨てる(disabled で送信もされない)
+                    // 土地に切り替えたら建物側の入力を捨てる(disabled で送信もされない)
                     if (!self.hasBuilding()) {
                         self.amountBuildingExcl = '';
                         self.amountBuildingIncl = '';

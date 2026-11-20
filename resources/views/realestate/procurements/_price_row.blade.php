@@ -8,7 +8,7 @@
               → assessmentLand / assessmentBuildingExcl / assessmentBuildingIncl
 
     ⚠ 建物（税込）の input に name を付けないこと。DB に入れるのは税抜だけ（設計書 §5.1）
-    ⚠ 建物欄は仲介土地のとき :disabled で送信対象から外す
+    ⚠ 建物欄は土地のとき :disabled で送信対象から外す
        （x-show だけだと hidden でも送信される。Conventions / Bug #3）
     ⚠ x-show を置いた要素に :style を書かないこと（Alpine が display を奪う。Bug #32）
 --}}

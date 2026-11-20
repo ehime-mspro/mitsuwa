@@ -204,7 +204,7 @@ class ReProcurement extends Model
         return $this->addTax($this->getTargetSellingPriceTotal(), $this->getTargetSellingBuildingTax());
     }
 
-    /** 建物価格欄を持つ物件種別か（仲介土地は土地のみ） */
+    /** 建物価格欄を持つ物件種別か（土地は建物なし） */
     public function hasBuilding(): bool
     {
         return ! $this->property_type->isLandOnly();
@@ -310,7 +310,7 @@ class ReProcurement extends Model
 
     protected static function booted(): void
     {
-        // 仲介土地（土地のみ）に変更されたとき、建物側の列を明示的に null へ正規化する。
+        // 物件種別「土地」に変更されたとき、建物側の列を明示的に null へ正規化する。
         // ⚠ 画面は建物 input を :disabled にして送信しないが、Laravel の validated() は
         //    未送信キーを結果に含めないため、update() では**旧値が DB に残る**。
         //    合計メソッドは hasBuilding() を見ない単純加算なので、残った建物額が

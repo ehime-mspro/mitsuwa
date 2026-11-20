@@ -215,7 +215,7 @@ class ContractAmountBreakdownTest extends TestCase
         }
     }
 
-    /** 仲介土地の仕入れ案件に紐づく契約は建物欄を持たない */
+    /** 土地の仕入れ案件に紐づく契約は建物欄を持たない */
     public function test_has_building_is_false_for_brokerage_land_procurement(): void
     {
         $procurement = $this->makeProcurement(RealEstatePropertyType::BrokerageLand->value);
@@ -238,7 +238,7 @@ class ContractAmountBreakdownTest extends TestCase
     }
 
     /**
-     * 紐づく仕入れ案件を「仲介土地」のものへ差し替えて保存すると、
+     * 紐づく仕入れ案件を「土地」のものへ差し替えて保存すると、
      * 建物・消費税額の列が null に正規化されること。
      *
      * ⚠ 正規化が無いと、契約額合計は「土地 + 残留建物」なのに

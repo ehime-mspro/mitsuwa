@@ -16,7 +16,7 @@ enum RealEstatePropertyType: string
         return match ($this) {
             self::UsedMansion   => '中古マンション',
             self::UsedHouse     => '中古戸建',
-            self::BrokerageLand => '仲介土地',
+            self::BrokerageLand => '土地',
             self::MansionBldg   => '一棟売りマンション',
             self::TenantBldg    => 'テナントビル',
             self::Apartment     => 'アパート',

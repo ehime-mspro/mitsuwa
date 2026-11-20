@@ -59,7 +59,7 @@ class ProcurementPriceBreakdownTest extends TestCase
         $this->assertTrue($p->hasBuilding());
     }
 
-    /** 土地のみ（仲介土地）は消費税 0・税込＝税抜 */
+    /** 物件種別が土地のときは消費税 0・税込＝税抜 */
     public function test_land_only_has_no_tax(): void
     {
         $p = $this->make([
@@ -240,7 +240,7 @@ class ProcurementPriceBreakdownTest extends TestCase
     }
 
     /**
-     * 物件種別を「仲介土地」に変更して保存すると、建物側の列が null に正規化されること。
+     * 物件種別を「土地」に変更して保存すると、建物側の列が null に正規化されること。
      *
      * ⚠ 画面は建物 input を :disabled にして送信しないが、Laravel の validated() は
      *    未送信キーを含めないため、正規化が無いと update() で**旧値が DB に残る**。
@@ -260,7 +260,7 @@ class ProcurementPriceBreakdownTest extends TestCase
         $this->assertSame(15000000, $p->getAssessmentPriceTotal());
         $this->assertSame(13000000, $p->getPurchasePriceTotal());
 
-        // 建物欄が送信されない状態（＝キーが無い）で物件種別だけを仲介土地に変える
+        // 建物欄が送信されない状態（＝キーが無い）で物件種別だけを土地に変える
         $p = $p->fresh();
         $p->update(['property_type' => RealEstatePropertyType::BrokerageLand->value]);
 

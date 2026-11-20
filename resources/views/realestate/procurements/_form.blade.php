@@ -63,19 +63,19 @@
                 <label class="block text-sm font-semibold text-gray-700 mb-1">建物面積（㎡）</label>
                 <input type="text" inputmode="decimal" pattern="[0-9.]*" name="building_area_sqm" value="{{ old('building_area_sqm', $p?->building_area_sqm) }}" placeholder="0.00"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-                <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「仲介土地」の場合は不要</p>
+                <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「土地」の場合は不要</p>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">構造</label>
                 <input type="text" name="structure" value="{{ old('structure', $p?->structure) }}" placeholder="例: RC造"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-                <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「仲介土地」の場合は不要</p>
+                <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「土地」の場合は不要</p>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">築年月</label>
                 <input type="month" name="built_year_month" value="{{ old('built_year_month', $p?->built_year_month) }}"
                        class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none">
-                <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「仲介土地」の場合は不要</p>
+                <p x-show="propertyType === 'brokerage_land'" class="text-xs text-gray-500 mt-1">※ 物件種別が「土地」の場合は不要</p>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">用途地域</label>
@@ -232,7 +232,7 @@ function procurementForm() {
 
         totalExcl: function(prefix) {
             var l = this.amountOf(prefix + 'Land');
-            // ⚠ 仲介土地に切り替えると建物欄は x-show で隠れ :disabled で送信もされないが、
+            // ⚠ 土地に切り替えると建物欄は x-show で隠れ :disabled で送信もされないが、
             //    Alpine の state には値が残る。ここでガードしないと「画面に見えている土地の額」と
             //    「税抜合計」が食い違い、実際に保存される値とも合わなくなる
             if (this.isLandOnly()) { return l; }
