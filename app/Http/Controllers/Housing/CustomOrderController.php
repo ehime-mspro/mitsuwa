@@ -11,6 +11,7 @@ use App\Models\Buyer;
 use App\Models\HsCustomOrder;
 use App\Models\HsCustomOrderFile;
 use App\Models\ReProcurement;
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Support\AttachmentDelivery;
@@ -589,35 +590,29 @@ class CustomOrderController extends Controller
      */
     private function syncLotStatus(HsCustomOrder $order, ?CustomOrderStatus $oldStatus): void
     {
-        if (!$order->re_project_lot_id) {
+        $newIsContracted = $order->status->isContractedOrLater();
+        $oldIsContracted = $oldStatus ? $oldStatus->isContractedOrLater() : false;
+
+        if ($newIsContracted === $oldIsContracted) {
             return;
         }
 
-        $lot = $order->projectLot;
+        // 土地の仕入れ案件の区画（無ければ何もしない）
+        $procurementId = $order->re_procurement_id ? (int) $order->re_procurement_id : null;
+        if ($newIsContracted) {
+            ReProcurementLot::markSoldFor($procurementId);
+        } else {
+            ReProcurementLot::markOnSaleFor($procurementId);
+        }
+
+        // 分譲地の区画
+        $lot = $order->re_project_lot_id ? $order->projectLot : null;
         if (!$lot) {
             return;
         }
 
-        $newIsContracted = $order->status->isContractedOrLater();
-        $oldIsContracted = $oldStatus ? $oldStatus->isContractedOrLater() : false;
-
-        $changed = false;
-
-        // 契約以前 → 契約以降: sold に更新
-        if ($newIsContracted && !$oldIsContracted) {
-            $lot->update(['status' => LotStatus::Sold->value]);
-            $changed = true;
-        }
-
-        // 契約以降 → 契約以前: on_sale に戻す
-        if (!$newIsContracted && $oldIsContracted) {
-            $lot->update(['status' => LotStatus::OnSale->value]);
-            $changed = true;
-        }
-
-        if ($changed) {
-            $lot->project?->syncStatusFromLots();
-        }
+        $lot->update(['status' => ($newIsContracted ? LotStatus::Sold : LotStatus::OnSale)->value]);
+        $lot->project?->syncStatusFromLots();
     }
 
     /**
@@ -625,17 +620,21 @@ class CustomOrderController extends Controller
      */
     private function releaseLot(HsCustomOrder $order): void
     {
+        // 契約以降のステータスで削除された場合のみ戻す
+        if (!$order->status->isContractedOrLater()) {
+            return;
+        }
+
+        ReProcurementLot::markOnSaleFor($order->re_procurement_id ? (int) $order->re_procurement_id : null);
+
         if (!$order->re_project_lot_id) {
             return;
         }
 
-        // 契約以降のステータスで削除された場合のみ戻す
-        if ($order->status->isContractedOrLater()) {
-            $lot = $order->projectLot;
-            if ($lot) {
-                $lot->update(['status' => LotStatus::OnSale->value]);
-                $lot->project?->syncStatusFromLots();
-            }
+        $lot = $order->projectLot;
+        if ($lot) {
+            $lot->update(['status' => LotStatus::OnSale->value]);
+            $lot->project?->syncStatusFromLots();
         }
     }
 }

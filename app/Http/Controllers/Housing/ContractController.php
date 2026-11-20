@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Housing;
 
 use App\Enums\LotStatus;
+use App\Models\ReProcurementLot;
 use App\Http\Controllers\Controller;
 use App\Models\Buyer;
 use App\Models\HsContract;
@@ -226,6 +227,9 @@ class ContractController extends Controller
      */
     private function updateLotStatusOnSold(HsProperty $property): void
     {
+        // 土地の仕入れ案件の区画（無ければ何もしない）
+        ReProcurementLot::markSoldFor($property->re_procurement_id ? (int) $property->re_procurement_id : null);
+
         if ($property->re_project_lot_id) {
             $lot = $property->projectLot;
             if ($lot) {
@@ -240,6 +244,9 @@ class ContractController extends Controller
      */
     private function updateLotStatusOnUnsold(HsProperty $property): void
     {
+        // 土地の仕入れ案件の区画（無ければ何もしない）
+        ReProcurementLot::markOnSaleFor($property->re_procurement_id ? (int) $property->re_procurement_id : null);
+
         if ($property->re_project_lot_id) {
             $lot = $property->projectLot;
             if ($lot) {

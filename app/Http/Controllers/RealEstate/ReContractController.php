@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Buyer;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
@@ -191,6 +192,8 @@ class ReContractController extends Controller
         if ($contractType->isProcurement() && $contract->procurement_id) {
             ReProcurement::where('id', $contract->procurement_id)
                 ->update(['status' => ProcurementStatus::Sold->value]);
+            // 土地の区画も成約に（区画が無ければ何もしない）
+            ReProcurementLot::markSoldFor((int) $contract->procurement_id);
         }
 
         if ($contractType->isBrokerage()) {
@@ -360,10 +363,12 @@ class ReContractController extends Controller
             if ($oldProcurementId && $oldProcurementId != $newProcurementId) {
                 ReProcurement::where('id', $oldProcurementId)
                     ->update(['status' => ProcurementStatus::Selling->value]);
+                ReProcurementLot::markOnSaleFor((int) $oldProcurementId);
             }
             if ($newProcurementId && $newProcurementId != $oldProcurementId) {
                 ReProcurement::where('id', $newProcurementId)
                     ->update(['status' => ProcurementStatus::Sold->value]);
+                ReProcurementLot::markSoldFor((int) $newProcurementId);
             }
         }
 
@@ -390,6 +395,7 @@ class ReContractController extends Controller
         if ($contract->contract_type->isProcurement() && $contract->procurement_id) {
             ReProcurement::where('id', $contract->procurement_id)
                 ->update(['status' => ProcurementStatus::Selling->value]);
+            ReProcurementLot::markOnSaleFor((int) $contract->procurement_id);
         }
 
         $name = $contract->property_name;
