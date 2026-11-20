@@ -31,6 +31,7 @@ manage/
 │   └── Models/
 │       ├── ReContract.php           # 不動産契約
 │       ├── ReProcurement.php        # 仕入れ案件
+│       ├── ReProcurementLot.php     # 土地の仕入れ案件の区画（1 案件に 1 つ）
 │       ├── ReProject.php            # 分譲地PJ
 │       ├── ReProjectLot.php         # 分譲地区画
 │       ├── ReProjectCost.php        # 分譲地原価
@@ -89,7 +90,8 @@ manage/
 | `re_contracts` | 不動産契約 (5種別統合, department列で住宅事業にも拡張可能) |
 | `re_procurements` | 仕入れ案件 |
 | `re_procurement_costs` | 仕入れ原価明細 |
-| `re_projects` | 分譲地PJ |
+| `re_procurement_lots` | 土地の仕入れ案件の区画（1 案件に 1 つ。`procurement_id` が一意・案件を消すと区画も消える。坪数・坪単価は保存しない） |
+| `re_projects` | 分譲地PJ（`source_procurement_code` ＝ 土地から変えた分譲地の元の仕入れ案件番号。直接登録した分譲地は空） |
 | `re_project_costs` | 分譲地原価明細 |
 | `re_project_lots` | 分譲地区画 |
 | `re_project_drawings` | 区画図面 |
