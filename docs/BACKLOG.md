@@ -6560,13 +6560,13 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 
 ⚠ `origin/13.x` への push はしていない。
 
-## ✅ 土地（旧「仲介土地」）の区画登録と、分譲地への変更 — 本番反映前
+## ✅ 土地（旧「仲介土地」）の区画登録と、分譲地への変更 — 本番反映済み
 
 設計書: @docs/superpowers/specs/2026-11-20-realestate-land-lot-design.md
 実装計画（実測記録つき）: @docs/superpowers/plans/2026-11-20-realestate-land-lot.md
 
 利用者の依頼（2026-11-20）。不動産管理の仕入れ案件のうち物件種別「仲介土地」は区画を登録できず、広さなどを確認できなかった。あわせて、1 つの土地を 2 区画以上に分けて別々の買主に売ることがあるので、当初は土地で登録していても分譲地に変えられるようにする。表記は「仲介土地」→「土地」。
-作業場所 `.claude/worktrees/land-lot`・枝 `land-lot`（13.x = `c557ef26` から。実装は `5ebc03ee` から `01a5b15a` まで）。**新しい表が 1 つ（DB 変更あり）。新しい PHP クラスがある**（本番反映では main repo の cwd で `composer dump-autoload --no-dev --optimize` が要る）。**ルートが 4 本増える**。⚠ **まだ本番に出していない。**
+作業場所 `.claude/worktrees/land-lot`・枝 `land-lot`（13.x = `c557ef26` から。実装は `5ebc03ee` から `01a5b15a` まで）。**新しい表が 1 つ（DB 変更あり）。新しい PHP クラスがある**（本番反映では main repo の cwd で `composer dump-autoload --no-dev --optimize` が要る）。**ルートが 4 本増える**。2026-11-20 に本番反映済み（下の「本番反映」）。
 
 ### 直す前
 
@@ -6640,6 +6640,25 @@ ssh での本番の読み取り（md5・コンパイル済みビューの lint�
 4. main repo の cwd で `13.x` を `land-lot` へ早送りし、**`composer dump-autoload --no-dev --optimize`**（新しいクラス `ReProcurementLot`・`ProcurementLotController`・`ProcurementToProjectConverter` ほか。worktree から流さない）
 5. `./deploy.sh`（ルートが 4 本増えるので `route:cache` が作り直される）
 6. 反映の後の読み取り（変えたファイルの md5・コンパイル済みビューの lint・ルート・`laravel.log`・`tinker` で `ReProcurement::nextProcurementCode()` が返ること〈仕入れ案件の新規登録の採番が `source_procurement_code` を読むので、SQL が入っていないと登録が 500 になる〉）→ ログインした画面で土地の仕入れ案件の詳細・一覧・契約の登録画面を見るだけ（登録・変換は押さない）
+
+### 本番反映（2026-11-20 実施）
+
+利用者の承認を段ごとにとって、上の手順どおりに流した（本番の読み取り・SQL・早送りと読み込みの表・`./deploy.sh`・ログインした画面のそれぞれで承認を取った）。`13.x` は作業のあいだ `c557ef26` のまま進んでいなかった（取り込み不要）。main repo の `13.x` を **`90845f5c`** へ早送りした（push なし）。manage を触るほかの会話は無かった（`ListAgents`）。
+
+| 段 | 見たこと | 結果 |
+|---|---|---|
+| 1 本番の読み取り（反映の前） | 変わるファイルの md5・新しいファイル・記録・型・外部キー・件数 | 変わる 29 本とも `c557ef26` と一致・新しい 6 本は本番に無い＝本番は 13.x のまま ／ `laravel.log` は Nov 18 01:45（3333 行）／ `re_procurements.id` は bigint unsigned・`procurement_code`・`project_code` は varchar(20)・`re_project_lots.status` は varchar(30)・InnoDB・utf8mb4_unicode_ci ＝ SQL と合う（SQL は直していない）／ `re_procurement_lots` も `source_procurement_code` もその索引も無い ／ `re_procurements` を指す外部キーは 4 本（建売・注文住宅・不動産の契約は SET NULL＝分譲地に変える処理が紐付けとして断る・原価は CASCADE＝変える処理がコードで消す）／ 仕入れ案件は土地（自社買取）19 件（紐付けあり 1）・マンション1棟 2・中古戸建 4・中古マンション 6（仲介の取引種別は 0）・分譲地 17 件・最大 RE-PRC-031／RE-PRJ-020 |
+| 2 SQL（DB が先） | 2 文を `tinker` から 1 文ずつ（先頭で表か列があれば止まる。SQL は base64 で埋め込んだ） | **OK 1・OK 2** ／ 流したあとの `SHOW CREATE TABLE` は SQL のとおり（`re_procurement_lots` の列・一意の索引・外部キー CASCADE ／ `re_projects.source_procurement_code` varchar(20) NULL・`project_code` の後ろ・一意の索引 `uq_re_projects_source_procurement_code`）／ 区画 0 行・分譲地 17 行のまま |
+| 3 早送りと読み込みの表 | main repo の `13.x` を `c557ef26` → `90845f5c`（52 ファイル）・main repo の cwd で `composer dump-autoload --no-dev --optimize`（PHP 8.3） | 7,424 クラス・新しい 4 クラス（`ProcurementLotController`・`ReProcurementLot`・`ProcurementConversionRefused`・`ProcurementToProjectConverter`）が表に入った・作業場所のパス 0・`vendor/bin/phpunit` は無い・作業ツリーは空 |
+| 4 `./deploy.sh` | 2026-11-20 22:07 ごろ（日本時間） | exit 0・6 段すべて。送ったアプリのファイルは 35 本と読み込みの表 2 本とビルドだけ。CSS・JS の名前は前と同じ（`app-o1yvrcrl.css`・`app-NiVQbl_Q.js`。ビルドの警告 1 件は以前からの Google Fonts の `@import`）。部品の名簿の作り直しと 3 つのキャッシュとも成功 |
+| 5 本番の読み取り（反映の後） | md5・構文・ビュー・ルート・記録・キャッシュ・本番の PHP で読んだ値 | 37 本とも手元（`90845f5c`）と **md5 が一致** ／ 変えた PHP の `php -l` ok ／ コンパイル済みビュー **328 本 / INVALID 0**（区画の欄の 1 本ぶん増えた）／ 新しいルート 4 本（`lot.store`・`lot.update`・`lot.destroy`・`convert`）／ `laravel.log` は Nov 18 01:45 のまま＝反映のあとのエラー 0 件 ／ `bootstrap/cache` は 22:07 に作り直し（`config.php`・`routes-v7.php` 600、名簿 2 つ 700）／ 次の番号 RE-PRC-032／RE-PRJ-021・区画 0 件・表記「土地」・土地 19 件のうち分譲地に変えられる 18／断る 1 |
+| 6 ログインした画面（利用者の Chrome・1440px・見るだけ・送信しない） | 一覧・土地の詳細 19 件・契約の画面・分譲地・建売・注文住宅・仕入れ先 | 一覧に「土地」・「区画」ボタン・「区画 0 / 0」・「仲介土地」の文字は 0 ／ 土地 19 件の詳細がすべて 200 で区画の欄が出る（区画の初期の値は土地面積と想定販売価格〈土地〉）／ 紐付けのある #21 だけ「分譲地に変える」が押せず「契約 1 件が紐づいているため、分譲地に変えられません。」（包む span の `title` と `aria-describedby`）・区画の初期の状態は「成約」 ／ #31 の区画と変える処理のフォームの送り先が正しく、二度押し止め（`submitOnce()`）がある ／ 契約の登録（仕入れ案件の選択肢 4 件）・契約の詳細と編集・分譲地・建売・注文住宅の詳細・仕入れ案件の編集が 200 ／ 仕入れ先 6 社の詳細に「関連する分譲地」 ／ どの画面も `main` の横のはみ出し 0・Alpine がすべて起動・コンソールのエラー 0 |
+
+⚠ 区画の登録・分譲地に変える操作は本番では押していない（本番のデータを変える操作のため。動きはテスト・変異・使い捨ての環境の実ブラウザで確かめてある）。本番で実際に区画を入れる・変えるのは利用者。
+
+⚠ 分譲地で使われている仕入れ先（本番で 6 社）は、これから削除できない（削除を押すと「この仕入れ先は仕入れ案件・分譲地で使用されているため削除できません。」）。
+
+⚠ `origin/13.x` への push はしていない。
 
 ## バックログ完了状況
 
@@ -6813,7 +6832,7 @@ lint（INVALID 0）と、ログイン済みの実 Chrome での目視まで確�
 
 **注文住宅の編集画面でも買主を選ぶ（2026-11-20・判断待ち ⑥・Bug #144）は 2026-11-20 に本番反映済み**（上の節。`13.x` = `f2a757c5`〈反映のときは push していない〉・本番の 5 本が手元と md5 で一致・本番のビュー 327 本の lint〈INVALID 0〉・`laravel.log` は Nov 18 01:45 のまま・本番の注文住宅 4 件の編集と契約の編集の 8 画面で買主の選択が出て、買主なしの CO-001 は未選択で開くことを確かめた。編集画面も登録と同じ買主の選択にし、保存は買主を必須・顧客名は買主の名前に。編集の保存と、契約一覧から開く契約の編集の保存は、画面の選択肢の買主だけを受け付ける〈自動のセキュリティ点検と最後の点検の指摘・利用者の了承〉。全件 5389 本・変異 15 通り・ビュー 326 本の lint〈INVALID 0〉・実ブラウザで確認。DB 変更・新しいクラスなし＝本番反映は `./deploy.sh` だけ。登録の保存などを絞るかは利用者の判断）。
 
-**土地（旧「仲介土地」）の区画登録と、分譲地への変更（2026-11-20）は、まだ本番に出していない**（上の節。表記を「土地」にし、土地の仕入れ案件に区画を 1 つ登録できるようにし、紐付けの無い自社買取の土地を中身ごと分譲地に変えられるようにした。区画の状態は契約・建売・注文住宅に合わせて動く。新しい表 `re_procurement_lots` と列 `re_projects.source_procurement_code`〈DB が先〉・新しい PHP クラス〈dump-autoload が要る〉・ルート 4 本。全件 5476 本・変異 35 通り・実ブラウザ 9 項目・最後の点検〈直してからマージ → Important 1 と Minor 5 を直した〉）。
+**土地（旧「仲介土地」）の区画登録と、分譲地への変更（2026-11-20）は 2026-11-20 に本番反映済み**（上の節。`13.x` = `90845f5c`〈反映のときは push していない〉・SQL を先に流し、本番の 37 本が手元と md5 で一致・本番のビュー 328 本の lint〈INVALID 0〉・`laravel.log` は Nov 18 01:45 のまま・ログインした画面で土地 19 件の詳細と一覧を見るだけで確かめた。表記を「土地」にし、土地の仕入れ案件に区画を 1 つ登録できるようにし、紐付けの無い自社買取の土地を中身ごと分譲地に変えられるようにした。区画の状態は契約・建売・注文住宅に合わせて動く。新しい表 `re_procurement_lots` と列 `re_projects.source_procurement_code`〈DB が先〉・新しい PHP クラス〈dump-autoload が要る〉・ルート 4 本。全件 5476 本・変異 35 通り・実ブラウザ 9 項目・最後の点検〈直してからマージ → Important 1 と Minor 5 を直した〉）。
 
 その他の新規要件は別途追記する。
 
