@@ -19,6 +19,12 @@ class CustomOrderEditBuyerTest extends HousingScreenTestCase
 {
     private const UPDATED = '注文住宅案件「CO-001」を更新しました。';
 
+    /** 契約の編集画面がそのまま保存できる契約済みの注文住宅（お客様の土地・建物の金額あり）。 */
+    private const CONTRACTED_ON_CUSTOMER_LAND = [
+        'status' => 'contracted', 'contract_date' => '2026-09-10', 'land_source_type' => 'customer_land',
+        'building_contract_price' => 25000000, 'building_cost' => 20000000,
+    ];
+
     private function linkedOrder(Buyer $buyer, array $overrides = []): HsCustomOrder
     {
         return $this->customOrder(array_merge(['customer_id' => $buyer->id, 'customer_name' => $buyer->full_name], $overrides));
@@ -166,6 +172,51 @@ class CustomOrderEditBuyerTest extends HousingScreenTestCase
         if ($case === 'outsider') {
             $this->assertNull($other->fresh()->getDepartmentPivot('housing'), 'ほかの部署の買主が住宅事業に足された');
         }
+    }
+
+    /**
+     * 契約一覧から開く注文住宅の契約の編集（housing.contracts.update-custom-order）も、同じ注文住宅の買主を画面の選択肢だけに絞る
+     * （最後の点検の I-1。編集画面だけ絞ると、同じ案件へ選択肢に無い買主を紐付ける道がこちらに残った）。
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('unofferedBuyers')]
+    public function test_the_contract_edit_screen_also_refuses_a_buyer_it_does_not_offer(string $case): void
+    {
+        $current = $this->buyer();
+        $order = $this->linkedOrder($current, self::CONTRACTED_ON_CUSTOMER_LAND);
+        $other = $case === 'outsider' ? Buyer::create(['last_name' => '部外', 'first_name' => '花子']) : $this->buyer('削除', '済子');
+        if ($case === 'deleted') {
+            $other->delete();
+        }
+        $form = $this->fill($this->contractEditForm($order), ['customer_id' => (string) $other->id]);
+
+        $html = $this->landed($this->submit($form, route('housing.contracts.edit-custom-order', $order)));
+
+        $this->assertErrorItem($html, trans('validation.in', ['attribute' => '顧客']));
+        $this->assertSame([$current->id, '山田 太郎'], [$order->fresh()->customer_id, $order->fresh()->customer_name], '選択肢に無い買主が紐付いた');
+        if ($case === 'outsider') {
+            $this->assertNull($other->fresh()->getDepartmentPivot('housing'), 'ほかの部署の買主が住宅事業に足された');
+        }
+    }
+
+    /** 契約の編集でも、今の買主が削除済みならそのまま保存できる（選択肢に今の買主を残す。Bug #58 の形）。 */
+    public function test_the_contract_edit_screen_keeps_a_deleted_current_buyer(): void
+    {
+        $current = $this->buyer('削除', '済子');
+        $order = $this->linkedOrder($current, self::CONTRACTED_ON_CUSTOMER_LAND);
+        $current->delete();
+        $form = $this->fill($this->contractEditForm($order), ['notes' => '外構の件']);
+        $this->assertSame((string) $current->id, $form['fields']['customer_id'], '削除済みの今の買主が選ばれていない');
+
+        $html = $this->landed($this->submit($form, route('housing.contracts.edit-custom-order', $order)));
+
+        $this->assertFlash($html, 'success', '契約を更新しました。');
+        $this->assertSame([$current->id, '外構の件'], [$order->fresh()->customer_id, $order->fresh()->notes]);
+    }
+
+    private function contractEditForm(HsCustomOrder $order): array
+    {
+        return $this->composedForm($this->htmlOf(route('housing.contracts.edit-custom-order', $order)), route('housing.contracts.update-custom-order', $order),
+            'customOrderEditForm', null, ['datePicker' => '', 'buyerSelect' => '']);
     }
 
     public function test_changing_the_buyer_of_a_contracted_order_marks_the_new_buyer_contracted(): void

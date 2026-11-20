@@ -317,15 +317,7 @@ class HsContractListController extends Controller
         $staffUsers = User::assignableWith($hsCustomOrder->created_by);
 
         // 買主マスタ（住宅事業所属。現在紐付け中のbuyerが SoftDelete されていても選択可能にする）
-        $buyers = Buyer::ofDepartment('housing')
-            ->orderBy('last_name_kana')
-            ->get();
-        if ($hsCustomOrder->customer_id) {
-            $current = Buyer::withTrashed()->find($hsCustomOrder->customer_id);
-            if ($current && !$buyers->contains('id', $current->id)) {
-                $buyers->push($current);
-            }
-        }
+        $buyers = $this->selectableCustomOrderBuyers($hsCustomOrder);
 
         // 仕入れ案件 / 分譲地区画リスト（プルダウン選択用）
         $procurements = ReProcurement::orderBy('procurement_code')->get();
@@ -337,6 +329,25 @@ class HsContractListController extends Controller
         return view('housing.contracts.edit-custom-order', compact(
             'hsCustomOrder', 'staffUsers', 'buyers', 'procurements', 'projectLots', 'computedLandCost'
         ));
+    }
+
+    /**
+     * 注文住宅の契約の編集画面の買主の選択肢（住宅事業の買主＋今の買主〈削除済み・住宅事業にいなくても〉）。
+     * 画面（editCustomOrder）と保存の入力チェック（updateCustomOrder）が同じ集合を使う（Bug #113・#130 と同じ決まり）。
+     */
+    private function selectableCustomOrderBuyers(HsCustomOrder $order): \Illuminate\Support\Collection
+    {
+        $buyers = Buyer::ofDepartment('housing')
+            ->orderBy('last_name_kana')
+            ->get();
+        if ($order->customer_id) {
+            $current = Buyer::withTrashed()->find($order->customer_id);
+            if ($current && !$buyers->contains('id', $current->id)) {
+                $buyers->push($current);
+            }
+        }
+
+        return $buyers->toBase();
     }
 
     /**
@@ -354,7 +365,9 @@ class HsContractListController extends Controller
         $landLocked = $hsCustomOrder->isLandLockedByContract();
         $validated = Validator::make($request->all(), [
             'customer_name'           => 'required|string|max:100',
-            'customer_id'             => 'required|integer|exists:buyers,id',
+            // 画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（注文住宅の編集画面と同じ。手で書き換えた番号でほかの部署・
+            // 削除済みの買主を紐付けさせない。判断待ち ⑥ の最後の点検 I-1。建売の契約の登録と編集は別の判断として残す）
+            'customer_id'             => ['required', 'integer', Rule::in($this->selectableCustomOrderBuyers($hsCustomOrder)->pluck('id')->all())],
             'created_by'              => 'nullable|integer|exists:users,id',
             'contract_date'           => 'required|date',
             'notes'                   => 'nullable|string|max:5000',
