@@ -247,20 +247,45 @@ class ReProcurement extends Model
     /** 契約のある案件のステータスを「販売済」から変えようとしたときの断り（一覧の小窓と編集画面。Bug #139） */
     public const STATUS_LOCKED_BY_CONTRACT = 'この仕入れ案件には契約があるため、ステータスは「販売済」から変えられません。契約を削除すると「販売中」に戻ります。';
 
+    /** 区画のある土地で、成約でない区画があるのに「販売済」へ変えようとしたときの断り（%d は成約でない区画の数。Bug #145） */
+    public const STATUS_SOLD_NEEDS_ALL_LOTS = '区画のある土地は、すべての区画が成約になると自動で「販売済」になります（成約でない区画が %d 件あります）。';
+
+    /** 区画のある土地で、全区画が成約なのに「販売済」以外へ変えようとしたときの断り（Bug #145） */
+    public const STATUS_STAYS_SOLD_WHILE_ALL_LOTS_SOLD = 'すべての区画が成約のため、ステータスは「販売済」にしかできません。区画を成約から戻すと、自動で「販売中」に戻ります。';
+
     /**
-     * そのステータスへ変えるのを断るか（Bug #139）。契約のある案件は「販売済」か今のステータスにしかできない。
-     * 戻すと契約の登録画面にまた出て、同じ案件に 2 件目の契約を作れてしまうため。
+     * 手でそのステータスへ変えるのを断る文（断らないなら null）。一覧の小窓と編集画面の入力チェックが使う。
      *
-     * ⚠ 今と同じなら通す — 契約があるのに販売済でない古いデータでも、編集画面をそのまま保存できる
+     * - 区画の無い案件（Bug #139）: 契約のある案件は「販売済」か今のステータスにしかできない。
+     *   戻すと契約の登録画面にまた出て、同じ案件に 2 件目の契約を作れてしまうため。
+     * - 区画のある土地（Bug #145）: 「販売済」かどうかは区画で決める（syncStatusFromLots() と同じ数え方）。
+     *   全区画が成約なら「販売済」にしかできず、成約でない区画があれば「販売済」にはできない。
+     *   Bug #139 の歯止めは使わない — 使うと、1 区画にだけ契約がある土地を手で販売済にしたとき販売中に戻せなかった。
+     *   2 件目の契約は区画ごとの決まり（ProcurementLotClaims・re_contracts.procurement_lot_id の一意の索引）が防ぎ、
+     *   全区画が成約のあいだは上の決まりが販売済に留める（#21 の形＝紐付けの無い「成約」の区画でも、手で販売中に戻させない）。
+     *
+     * ⚠ 今と同じなら通す — 区画や契約と食い違った古いデータでも、編集画面をそのまま保存できる
      *   （保存済みの値で断ると、ほかの欄だけ直したいときも保存できない。Bug #130 の形）。
      */
-    public function refusesStatus(string $status): bool
+    public function statusRefusal(string $status): ?string
     {
-        if ($status === ProcurementStatus::Sold->value || $status === $this->status?->value) {
-            return false;
+        if ($status === $this->status?->value) {
+            return null;
         }
 
-        return $this->contracts()->exists();
+        $lots = ReProcurementLot::where('procurement_id', $this->id)->get(['status']);
+        if ($lots->isEmpty()) {
+            return $status !== ProcurementStatus::Sold->value && $this->contracts()->exists()
+                ? self::STATUS_LOCKED_BY_CONTRACT
+                : null;
+        }
+
+        $unsold = $lots->reject(fn (ReProcurementLot $lot) => $lot->status === LotStatus::Sold)->count();
+        if ($unsold === 0) {
+            return $status === ProcurementStatus::Sold->value ? null : self::STATUS_STAYS_SOLD_WHILE_ALL_LOTS_SOLD;
+        }
+
+        return $status === ProcurementStatus::Sold->value ? sprintf(self::STATUS_SOLD_NEEDS_ALL_LOTS, $unsold) : null;
     }
 
     public function createdBy(): BelongsTo

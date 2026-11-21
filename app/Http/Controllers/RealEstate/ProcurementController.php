@@ -267,7 +267,7 @@ class ProcurementController extends Controller
         $statuses = implode(',', array_column(ProcurementStatus::cases(), 'value'));
 
         $validated = $request->validate([
-            'status' => ["bail", "required", "in:{$statuses}", $this->statusLockedByContract($procurement)],
+            'status' => ["bail", "required", "in:{$statuses}", $this->statusLockRule($procurement)],
         ]);
 
         $procurement->update([
@@ -444,14 +444,20 @@ class ProcurementController extends Controller
     // ================================================================
 
     /**
-     * 契約のある案件を「販売済」から戻させない規則（一覧の小窓と編集画面。Bug #139）。登録（$procurement が null）では何もしない。
+     * 手でのステータス変更の規則（一覧の小窓と編集画面）。登録（$procurement が null）では何もしない。
+     * 区画の無い案件は契約があれば「販売済」から戻させない（Bug #139）、区画のある土地は「販売済」かどうかを区画で決める（Bug #145）。
+     * 断る文は ReProcurement::statusRefusal() の 1 か所。
      * ⚠ 呼ぶ側は bail を付ける（in: で断られた値をここへ通さない＝ここに来るのは正しいステータスの文字だけ）。
      */
-    private function statusLockedByContract(?ReProcurement $procurement): \Closure
+    private function statusLockRule(?ReProcurement $procurement): \Closure
     {
         return function (string $attribute, mixed $value, \Closure $fail) use ($procurement) {
-            if ($procurement !== null && is_string($value) && $procurement->refusesStatus($value)) {
-                $fail(ReProcurement::STATUS_LOCKED_BY_CONTRACT);
+            if ($procurement === null || ! is_string($value)) {
+                return;
+            }
+            $refusal = $procurement->statusRefusal($value);
+            if ($refusal !== null) {
+                $fail($refusal);
             }
         };
     }
@@ -487,7 +493,7 @@ class ProcurementController extends Controller
             'costs.*.notes'            => 'nullable|string|max:200',
             'property_type'       => ["bail", "required", "in:{$propertyTypes}", $this->typeLockedByLot($current)],
             'transaction_type'    => "required|in:{$transactionTypes}",
-            'status'              => ["bail", "required", "in:{$statuses}", $this->statusLockedByContract($current)],
+            'status'              => ["bail", "required", "in:{$statuses}", $this->statusLockRule($current)],
             'property_name'       => 'required|string|max:100',
             'postal_code'         => 'nullable|string|max:10',
             'address'             => 'required|string|max:200',
