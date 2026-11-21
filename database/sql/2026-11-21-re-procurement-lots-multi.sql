@@ -1,6 +1,6 @@
 -- 土地の仕入れ案件に区画を何区画でも登録する — 2026-11-21
 --
--- 設計書: docs/superpowers/specs/2026-11-21-realestate-land-multi-lot-design.md
+-- 設計書: docs/superpowers/specs/2026-11-20-realestate-land-multi-lot-design.md
 --
 -- ⚠ tests/Concerns/CreatesRealEstateSchema.php と対で維持すること（あちらは SQLite のテストのための鏡。
 --   ProcurementLotModelTest::test_the_test_schema_matches_the_multi_lot_sql が列と索引を突き合わせる）。
@@ -15,6 +15,17 @@
 --      先にふつうの索引を足してから一意の索引を外す。順が逆だと MySQL が error 1553 で断る）。
 --   ⚠ 途中の文で止まったときは、先頭の確かめを飛ばして、止まった文から続きを流す（入った文をもう一度流さない。
 --     例: 1 文目だけ入って止まったら、2 文目から流す）。流したあとは SHOW CREATE TABLE で 4 つの表を確かめる。
+--
+-- 戻し方（逆の順。流す前に SHOW CREATE TABLE で外部キー・索引の名前を確かめる。コードを先に戻してから流す）:
+--   6 → 5 → 4: 3 つの表（hs_custom_orders・hs_properties・re_contracts）から、先に外部キー
+--     （fk_hs_custom_orders_re_procurement_lot・fk_hs_properties_re_procurement_lot・fk_re_contracts_procurement_lot）を外し、
+--     次に足した索引と列（re_procurement_lot_id・re_procurement_lot_id・procurement_lot_id）を外す。
+--     ⚠ 列を外すと、契約・建売・注文住宅がどの区画に付いていたかは消える（戻せない）。
+--   3 → 2 → 1: re_procurement_lots.procurement_id の一意の索引 uq_re_procurement_lots_procurement は、
+--     **区画が 2 つ以上の案件が無いときだけ**戻せる（あれば一意の索引を足す文が重複で断られる）。
+--     戻すときは一意の索引を足してから、ふつうの索引 idx_re_procurement_lots_procurement を外す
+--     （外部キー fk_re_procurement_lots_procurement がどちらかの索引を使っているので、順が逆だと MySQL が error 1553 で断る）。
+--     列のコメントは元の「仕入れ案件（土地。1 案件に 1 区画まで）」に戻す。
 
 -- 1. 区画の仕入れ案件の索引を、一意でないふつうの索引にする（1 案件に何区画でも）
 ALTER TABLE `re_procurement_lots`
