@@ -187,6 +187,38 @@ class ReProcurement extends Model
     }
 
     /**
+     * 住宅事業の画面（建売・注文住宅）の土地の区画の選択肢。ReProject::housingLotOptions() と同じ形 ＋ label。
+     * land_cost は HousingLandCost::forLink('procurement', null, 案件, 区画) と同じ値（原価の行が無ければ null）。
+     *
+     * @param  array<int, int>  $excludeLotIds  選択肢から外す区画（ほかに取られた区画。ProcurementLotClaims::takenLotIds()）
+     * @return array<int, array{id: int, lot_number: int, label: string, area_sqm: float, selling_price: ?int, land_cost: ?int, status: string, status_label: string}>
+     */
+    public function housingLotOptions(array $excludeLotIds = []): array
+    {
+        $hasCosts = $this->costs()->exists();
+
+        $results = [];
+        foreach ($this->lots()->get() as $lot) {
+            if (in_array((int) $lot->id, $excludeLotIds, true)) {
+                continue;
+            }
+
+            $results[] = [
+                'id'            => $lot->id,
+                'lot_number'    => $lot->lot_number,
+                'label'         => $lot->optionLabel(),
+                'area_sqm'      => (float) $lot->area_sqm,
+                'selling_price' => $lot->selling_price,
+                'land_cost'     => $hasCosts ? $this->landCostForLot((int) $lot->id) : null,
+                'status'        => $lot->status->value,
+                'status_label'  => $lot->status->label(),
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
      * 区画の成約状況から仕入れ案件のステータスを集約する（設計書 §5.4。ReProject::syncStatusFromLots() と同じ決まり）。
      *
      * - 全区画が成約（区画 1 つ以上）→ 販売済（今が販売済・不成約なら触らない）

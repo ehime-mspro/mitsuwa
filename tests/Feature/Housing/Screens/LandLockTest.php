@@ -4,6 +4,7 @@ namespace Tests\Feature\Housing\Screens;
 
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
+use App\Models\ReProcurementLot;
 
 /**
  * 契約のある建売・注文住宅の土地の紐付け（種別・区画・仕入れ案件）は変えさせない（判断待ち ④・案 B）。
@@ -165,6 +166,29 @@ class LandLockTest extends HousingScreenTestCase
         $this->assertErrorItem($html, HsProperty::LAND_LOCKED_BY_CONTRACT);
         $property->refresh();
         $this->assertSame(['project_lot', $a->id, null], [$property->land_source_type->value, $property->re_project_lot_id, $property->re_procurement_id]);
+    }
+
+    public function test_changing_only_the_procurement_lot_is_a_link_change(): void
+    {
+        $procurement = $this->procurement();
+        $one = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 1, 'area_sqm' => 100, 'selling_price' => 10000000, 'status' => 'sold']);
+        $two = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 2, 'area_sqm' => 100, 'selling_price' => 10000000, 'status' => 'on_sale']);
+        $property = $this->property(['land_source_type' => 'procurement', 're_procurement_id' => $procurement->id, 're_procurement_lot_id' => $one->id]);
+        $this->contract($property, $this->buyer());
+        $same = ['land_source_type' => 'procurement', 're_procurement_id' => (string) $procurement->id, 're_procurement_lot_id' => (string) $one->id];
+
+        $this->assertFalse($property->refusesLandChange($same));
+        $this->assertTrue($property->refusesLandChange(array_merge($same, ['re_procurement_lot_id' => (string) $two->id])));
+        $this->assertTrue($property->refusesLandChange(array_merge($same, ['re_procurement_lot_id' => ''])));
+
+        $url = route('housing.properties.edit', $property);
+        $form = $this->propertyEditForm($property);
+        $form['fields']['re_procurement_lot_id'] = (string) $two->id;
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, HsProperty::LAND_LOCKED_BY_CONTRACT);
+        $this->assertSame($one->id, $property->fresh()->re_procurement_lot_id);
     }
 
     public function test_the_lock_error_comes_with_the_other_errors(): void

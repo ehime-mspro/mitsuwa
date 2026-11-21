@@ -11,7 +11,7 @@
       refreshOffered = 「今の計算値にする」を出すか（手動 OFF・新規でない・保存済みが手動 OFF・紐付け先が同じ・計算値がある・保存値と違う）。
                        付けたあとも外せるように、refresh には関係なく決める
       unavailable    = 保存すると空になる（計算できない）ことを知らせるか（紐付け先を選んでいるときだけ）
-    housingLandLinkChanged(saved, now) は紐付け先の比べ方（LocksLandAfterContract::landLink() と同じ: 種別と、その種別で使う id だけ。
+    housingLandLinkChanged(saved, now) は紐付け先の比べ方（LocksLandAfterContract::landLink() と同じ: 種別と、その種別で使う id だけ〈仕入れ案件のときは土地の区画 procurementLot も〉。
     数字だけの id は先頭の 0 を落とす）。housingYen(v) は金額の書き方（4,000,000円）。
     ⚠ 説明はこの Blade コメントに書く。script の中のコメントにアットマークで始まる語やコンポーネントのタグを書くと、Blade が展開して壊す（Bug #30）。
 --}}
@@ -34,7 +34,7 @@ function housingLandLinkChanged(saved, now) {
     };
     var key = function (link) {
         var type = link.type ? String(link.type) : null;
-        return JSON.stringify([type, type === 'project_lot' ? id(link.lot) : null, type === 'procurement' ? id(link.procurement) : null]);
+        return JSON.stringify([type, type === 'project_lot' ? id(link.lot) : null, type === 'procurement' ? id(link.procurement) : null, type === 'procurement' ? id(link.procurementLot) : null]);
     };
     return key(saved) !== key(now);
 }

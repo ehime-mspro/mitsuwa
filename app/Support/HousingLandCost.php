@@ -28,7 +28,7 @@ final class HousingLandCost
      * 紐付け先から計算した土地原価。計算できなければ null
      * （区画: 分譲地の全区画に販売価格が無い・その区画が無い／仕入れ案件: 原価の行が 1 つも無い・その案件が無い／それ以外の種別）。
      */
-    public static function forLink(?string $sourceType, mixed $lotId, mixed $procurementId): ?int
+    public static function forLink(?string $sourceType, mixed $lotId, mixed $procurementId, mixed $procurementLotId = null): ?int
     {
         if ($sourceType === HousingLandSourceType::ProjectLot->value) {
             $lot = is_numeric($lotId) ? ReProjectLot::find((int) $lotId) : null;
@@ -38,12 +38,17 @@ final class HousingLandCost
         }
 
         if ($sourceType === HousingLandSourceType::Procurement->value) {
-            $procurement = is_numeric($procurementId) ? ReProcurement::with('costs')->find((int) $procurementId) : null;
+            $procurement = is_numeric($procurementId) ? ReProcurement::with('costs', 'lots')->find((int) $procurementId) : null;
             if ($procurement === null || $procurement->costs->isEmpty()) {
                 return null;
             }
 
-            return $procurement->getEffectiveCostTotal();
+            // 土地の区画: 区画が 2 つ以上なら区画ごとの按分（区画を選んでいなければ空）。0〜1 つなら全額
+            $lotKey = (is_int($procurementLotId) || (is_string($procurementLotId) && ctype_digit($procurementLotId)))
+                ? (int) $procurementLotId
+                : null;
+
+            return $procurement->landCostForLot($lotKey);
         }
 
         return null;
@@ -57,7 +62,7 @@ final class HousingLandCost
 
     /**
      * 手動 OFF で保存する土地原価。$current は保存済みの行（新規登録は null。保存済みの値は getOriginal() で読む）、
-     * $link は保存する紐付け（land_source_type・re_project_lot_id・re_procurement_id）。
+     * $link は保存する紐付け（land_source_type・re_project_lot_id・re_procurement_id・re_procurement_lot_id）。
      */
     public static function whenAutomatic(HsProperty|HsCustomOrder|null $current, array $link, bool $refresh): ?int
     {
@@ -68,7 +73,7 @@ final class HousingLandCost
             (bool) $current?->getOriginal('is_land_cost_manual'),
             $current !== null && $current->landLinkDiffers($link),
             $refresh,
-            self::forLink($link['land_source_type'] ?? null, $link['re_project_lot_id'] ?? null, $link['re_procurement_id'] ?? null),
+            self::forLink($link['land_source_type'] ?? null, $link['re_project_lot_id'] ?? null, $link['re_procurement_id'] ?? null, $link['re_procurement_lot_id'] ?? null),
             $saved === null ? null : (int) $saved,
         );
     }

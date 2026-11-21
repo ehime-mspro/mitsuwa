@@ -35,16 +35,17 @@ trait LocksLandAfterContract
      */
     public function landLinkDiffers(array $input): bool
     {
-        return self::landLink($input['land_source_type'] ?? null, $input['re_project_lot_id'] ?? null, $input['re_procurement_id'] ?? null)
-            !== self::landLink($this->land_source_type?->value, $this->re_project_lot_id, $this->re_procurement_id);
+        return self::landLink($input['land_source_type'] ?? null, $input['re_project_lot_id'] ?? null, $input['re_procurement_id'] ?? null, $input['re_procurement_lot_id'] ?? null)
+            !== self::landLink($this->land_source_type?->value, $this->re_project_lot_id, $this->re_procurement_id, $this->re_procurement_lot_id);
     }
 
     /**
-     * 比べる形: [種別, 種別が分譲地区画のときだけ区画 id, 種別が仕入れ案件のときだけ仕入れ案件 id]
+     * 比べる形: [種別, 種別が分譲地区画のときだけ区画 id, 種別が仕入れ案件のときだけ仕入れ案件 id,
+     *           種別が仕入れ案件のときだけ土地の区画 id]（区画だけを変えるのも「紐付けが違う」）
      *
-     * @return array{0: ?string, 1: ?string, 2: ?string}
+     * @return array{0: ?string, 1: ?string, 2: ?string, 3: ?string}
      */
-    private static function landLink(mixed $type, mixed $lotId, mixed $procurementId): array
+    private static function landLink(mixed $type, mixed $lotId, mixed $procurementId, mixed $procurementLotId = null): array
     {
         $type = is_string($type) && $type !== '' ? $type : null;
 
@@ -52,6 +53,7 @@ trait LocksLandAfterContract
             $type,
             $type === HousingLandSourceType::ProjectLot->value ? self::idText($lotId) : null,
             $type === HousingLandSourceType::Procurement->value ? self::idText($procurementId) : null,
+            $type === HousingLandSourceType::Procurement->value ? self::idText($procurementLotId) : null,
         ];
     }
 

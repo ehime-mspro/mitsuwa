@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Housing;
 
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Support\HousingLandCost;
@@ -48,6 +49,34 @@ class HousingLandCostTest extends HousingScreenTestCase
 
         $bare = $this->procurement(['procurement_code' => 'RE-PRC-002']);
         $this->assertNull(HousingLandCost::forLink('procurement', null, $bare->id), '原価の行が無い仕入れ案件を計算できるとした');
+    }
+
+    public function test_a_procurement_lot_is_allocated_or_whole_by_the_number_of_lots(): void
+    {
+        $procurement = $this->costedProcurement(); // 原価 7,850,000
+        $one = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 1, 'area_sqm' => 100, 'selling_price' => 10000000, 'status' => 'on_sale']);
+
+        // 1 区画: 区画なしでも区画ありでも全額
+        $this->assertSame(7850000, HousingLandCost::forLink('procurement', null, $procurement->id));
+        $this->assertSame(7850000, HousingLandCost::forLink('procurement', null, $procurement->id, $one->id));
+
+        $two = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 2, 'area_sqm' => 100, 'selling_price' => 30000000, 'status' => 'on_sale']);
+
+        // 2 区画以上: 区画ごとの按分（分譲地と同じ式）。区画なしは空
+        $this->assertSame(1962500, HousingLandCost::forLink('procurement', null, $procurement->id, (string) $one->id));
+        $this->assertSame(5887500, HousingLandCost::forLink('procurement', null, $procurement->id, $two->id));
+        $this->assertNull(HousingLandCost::forLink('procurement', null, $procurement->id));
+        $this->assertNull(HousingLandCost::forLink('procurement', null, $procurement->id, 'abc'));
+        $this->assertNull(HousingLandCost::forLink('procurement', null, $procurement->id, 99999));
+    }
+
+    public function test_a_procurement_without_cost_rows_stays_empty_even_with_a_lot(): void
+    {
+        $bare = $this->procurement(['procurement_code' => 'RE-PRC-003']);
+        $lot = ReProcurementLot::create(['procurement_id' => $bare->id, 'lot_number' => 1, 'area_sqm' => 100, 'selling_price' => 10000000, 'status' => 'on_sale']);
+
+        $this->assertNull(HousingLandCost::forLink('procurement', null, $bare->id, $lot->id));
+        $this->assertSame([null], array_column($bare->fresh()->housingLotOptions(), 'land_cost'));
     }
 
     public function test_other_links_cannot_be_computed(): void

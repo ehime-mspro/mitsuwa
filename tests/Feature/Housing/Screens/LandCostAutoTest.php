@@ -5,6 +5,7 @@ namespace Tests\Feature\Housing\Screens;
 use App\Models\HsContract;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
+use App\Models\ReProcurementLot;
 use App\Models\ReProjectLot;
 
 /**
@@ -564,5 +565,49 @@ class LandCostAutoTest extends HousingScreenTestCase
         $this->landed($this->submit($this->customOrderContractForm($order, 'data.reProjectLotId = "' . $four->id . '";'), route('housing.contracts.edit-custom-order', $order)));
         $order->refresh();
         $this->assertSame([$four->id, 14400000], [$order->re_project_lot_id, $order->land_cost]);
+    }
+
+    // ============================================================
+    // 仕入れ案件の情報の API（土地の区画の一覧）
+    // ============================================================
+
+    public function test_procurement_info_lists_selectable_lots(): void
+    {
+        $procurement = $this->costedProcurement(); // 原価 7,850,000
+        $one = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 1, 'area_sqm' => 132.69, 'selling_price' => 10000000, 'status' => 'on_sale']);
+        $two = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 2, 'area_sqm' => 100, 'selling_price' => 30000000, 'status' => 'on_sale']);
+        $owner = $this->property(['property_code' => 'HS-001', 'land_source_type' => 'procurement', 're_procurement_id' => $procurement->id, 're_procurement_lot_id' => $one->id]);
+        $other = $this->property(['property_code' => 'HS-002']);
+        $url = route('api.housing.procurement-info', $procurement);
+        $ids = fn ($response) => array_column($response->json('lots'), 'id');
+
+        // 持ち主の指定なし・ほかの建売: 建売に取られた区画 1 は外れる
+        $this->assertSame([$two->id], $ids($this->actingAs($this->user)->getJson($url)));
+        $this->assertSame([$two->id], $ids($this->actingAs($this->user)->getJson($url . '?property_id=' . $other->id)));
+        // 持ち主の建売: 自分の区画は残る
+        $response = $this->actingAs($this->user)->getJson($url . '?property_id=' . $owner->id);
+        $this->assertSame([$one->id, $two->id], $ids($response));
+        // 形は区画の一覧（分譲地）と同じ ＋ label。土地原価は按分の値
+        $this->assertSame([
+            'id' => $one->id, 'lot_number' => 1, 'label' => $one->optionLabel(), 'area_sqm' => 132.69,
+            'selling_price' => 10000000, 'land_cost' => 1962500, 'status' => 'on_sale', 'status_label' => '販売中',
+        ], $response->json('lots.0'));
+        $this->assertSame(5887500, $response->json('lots.1.land_cost'));
+        // 数字でない・配列の指定は無視して 200（区画 1 は取られたまま）
+        $response = $this->actingAs($this->user)->getJson($url . '?property_id[]=' . $owner->id . '&custom_order_id=abc');
+        $response->assertOk();
+        $this->assertSame([$two->id], $ids($response));
+    }
+
+    public function test_procurement_info_keeps_the_lot_of_the_order_being_edited(): void
+    {
+        $procurement = $this->costedProcurement();
+        $one = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 1, 'area_sqm' => 100, 'selling_price' => 10000000, 'status' => 'sold']);
+        $two = ReProcurementLot::create(['procurement_id' => $procurement->id, 'lot_number' => 2, 'area_sqm' => 100, 'selling_price' => 30000000, 'status' => 'on_sale']);
+        $order = $this->customOrder(['status' => 'contracted', 'land_source_type' => 'procurement', 're_procurement_id' => $procurement->id, 're_procurement_lot_id' => $one->id]);
+        $url = route('api.housing.procurement-info', $procurement);
+
+        $this->assertSame([$two->id], array_column($this->actingAs($this->user)->getJson($url)->json('lots'), 'id'));
+        $this->assertSame([$one->id, $two->id], array_column($this->actingAs($this->user)->getJson($url . '?custom_order_id=' . $order->id)->json('lots'), 'id'));
     }
 }

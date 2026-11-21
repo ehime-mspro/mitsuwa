@@ -6,11 +6,13 @@ use App\Enums\HousingFileCategory;
 use App\Enums\HousingLandSourceType;
 use App\Enums\HousingPropertyStatus;
 use App\Http\Controllers\Controller;
+use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
 use App\Models\HsPropertyFile;
 use App\Support\AttachmentDelivery;
 use App\Support\HousingLandCost;
 use App\Support\JapanTime;
+use App\Support\ProcurementLotClaims;
 use App\Support\Settings;
 use App\Models\ReProcurement;
 use App\Models\ReProject;
@@ -425,9 +427,17 @@ class PropertyController extends Controller
      * 仕入れ案件情報取得
      * GET /api/housing/procurement-info/{procurement}
      */
-    public function procurementInfo(ReProcurement $procurement)
+    public function procurementInfo(Request $request, ReProcurement $procurement)
     {
         $procurement->load('costs');
+
+        // 区画の選択肢: ほかに取られた区画を外す。編集中の建売・注文住宅（?property_id= / ?custom_order_id=）の今の区画は残す。
+        // ⚠ 数字の文字だけを受け付ける（配列・数字でない値は無視。Bug #97）
+        $propertyId = $request->query('property_id');
+        $orderId = $request->query('custom_order_id');
+        $current = is_string($propertyId) && ctype_digit($propertyId)
+            ? HsProperty::find((int) $propertyId)
+            : (is_string($orderId) && ctype_digit($orderId) ? HsCustomOrder::find((int) $orderId) : null);
 
         return response()->json([
             'postal_code'          => $procurement->postal_code,
@@ -437,6 +447,7 @@ class PropertyController extends Controller
             // 土地原価の自動の値（原価の行が無ければ null。画面はこちらを使う。App\Support\HousingLandCost）
             'land_cost'            => HousingLandCost::forLink(HousingLandSourceType::Procurement->value, null, $procurement->id),
             'target_selling_price' => $procurement->target_selling_price_land,
+            'lots'                 => $procurement->housingLotOptions(ProcurementLotClaims::takenLotIds([$procurement->id], $current)),
         ]);
     }
 
