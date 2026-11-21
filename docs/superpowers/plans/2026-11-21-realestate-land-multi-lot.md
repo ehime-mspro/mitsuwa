@@ -375,4 +375,98 @@ EOF
 
 ## 実測記録
 
-（Task 0 から書き足す）
+（Task 10 の本番反映はそのときに書き足す。台帳は `.superpowers/sdd/2026-11-21-realestate-land-multi-lot/progress.md`）
+
+### 進め方（2026-11-21）
+
+- subagent-driven（利用者の選択）。Task ごとに実装の担当 → 別の点検の担当。Task 2〜4・6・7 は実装・点検とも opus、Task 1・5・8 は sonnet
+- Task 9 は 1 つの担当にせず、変異 → 実ブラウザ → 最後の点検（直しの波・範囲を絞った点検）→ 記録の順に別々に出した（Ruling 13。変異は作業ツリーを書き換えるので実ブラウザと同時に動かさない）
+
+### Task 0
+
+- 13.x（`37a96107`）は HEAD（`00995aeb`）の祖先 → 取り込み不要
+- vendor: main repo から `cp -a` → `composer install --no-scripts`（PHP 8.3）→ `vendor/bin/phpunit` あり・作業ツリーは空
+- 着手前の全件: OK (5476 tests, 60164 assertions)・5:11・ピーク 175.50 MB（PHP 8.3・OPcache あり）
+- 単一区画を前提にしているファイル（Step 4 の grep）: app 8 本（`Housing/ContractController`・`Housing/CustomOrderController`・`RealEstate/ProcurementController`・`ProcurementLotController`・`ReContractController`・`ReProcurementLot`・`ProcurementListRow`・`ProcurementToProjectConverter`）／ views 6 本（`housing/custom-orders/show`・`housing/properties/show`・`realestate/contracts/{create,edit,show}`・`realestate/procurements/_lot_section`）／ tests 13 本（一部は分譲地の `$this->lot()` に当たっているだけ）
+
+### Task 1〜8（コミット・テスト・点検）
+
+| Task | コミット | テスト | 点検 |
+|---|---|---|---|
+| 1 表と列 | `bd4e9608` | `ProcurementLotModelTest` OK (13 tests, 55 assertions)・RealEstate＋Housing OK (926 tests, 15252 assertions) | Approved（Minor 2）。⚠ 本番の `re_contracts`・`hs_properties`・`hs_custom_orders` の DDL がリポジトリに無く、SQL の `AFTER` の列名を確かめられない → Task 10 Step 2 で確かめる |
+| 2 部品 | `35a7bc4f`・直し `65c9647d` | RealEstate＋Housing＋Unit OK (1946 tests, 21108 assertions)・全件 OK (5495 tests, 60287 assertions) | Needs fixes（Important 1: `refusal()` の「保存済みの持ち主が区画を変える・selfTakes=false」の枝をテストが通っていない）→ テストを足し、変異（`$changed` を縮める）で赤を確かめた → clean |
+| 3 区画の欄 | `5a81bcc2` | 全件 OK (5503 tests, 60568 assertions)・ビュー 327 本 / INVALID 0 | Approved（Critical・Important 0） |
+| 4 不動産の契約 | `2c2c1995` | 全件 OK (5516 tests, 61260 assertions)・ビュー 327 本 / INVALID 0 | Approved（Ruling 6 は妥当） |
+| 5 住宅事業の土台 | `d9fff13c` | Housing＋RealEstate＋Unit OK (1972 tests, 22153 assertions) | Approved |
+| 6 建売 | `049a93fd` | 全件 OK (5536 tests, 62337 assertions)・ビュー 327 本 / INVALID 0 | Approved（担当の自前の変異 18 通り＋カナリアで緑 2 → テストを足して赤） |
+| 7 注文住宅 | `bbf6cad5`・`95660006`・`964aa6fe`・直し `88d279f5`・`66a5f9a8` | 全件 OK (5557 tests, 64733 assertions)・直しのあと Housing＋RealEstate OK (1002 tests, 20380 assertions) | Needs fixes（Important 1: 土地が売り切れて仕入れ案件が販売済になると、見積りの注文住宅〈と区画の無い古い注文住宅〉を編集画面からそのまま保存できない。テストは `ReContract::create` だけで `markSold` を通らず見逃した）→ `formOptions()` が今の仕入れ案件をステータスに関わらず残す・実際の契約の画面で売り切れにするテスト → clean。担当の自前の変異 26 通り＋カナリアで緑 4 → テストを足して赤 |
+| 8 一覧・変える・名残 | `7c3b79e1` | 全件 OK (5562 tests, 65330 assertions)・ビュー 327 本 / INVALID 0 | Approved |
+
+- Task 8 Step 4 の grep の残り（どれも区画の 1 区画の名残ではない）: `realestate/contracts/show.blade.php:204-205` の `$contract->lot`（分譲地の区画 `ReContract::lot()`）／ テストの `$this->lot(…)`（テストのヘルパーのメソッド）／ `ParsesSortLinksTest.php:70` の「1 つまで」（関係のないコメント）／ `ProcurementLotScreensTest` の 2 か所（`ONLY_ONE` と「1 つまで」の文が**無いこと**を固定するテスト）。app の `->lot`・`markSoldFor`・`markOnSaleFor`・`ONLY_ONE` は 0 件
+- Task 3 の grep（「1 つまで」「2 つ目」）の残り 2 件は `app/Support/SurveyQuestionForm.php` の「2 つ目以降」（アンケートの選択肢の話）
+
+### 台帳の決めごと（Ruling）
+
+| # | 中身 |
+|---|---|
+| 1 | Task 3 の hidden `lot_form` に和名「区画のフォーム」（和名の走査が求めた） |
+| 2 | 区画が見つからない（ほかの案件の区画を含む）ときは詳細 `#lot` へ `NOT_FOUND`、案件も無ければ一覧へ `GONE`（決めたこと 6） |
+| 3 | 区画の削除の確認の文を「区画を削除しますか？ 登録した面積・販売価格などが消えます。」に（Task 8 で直した） |
+| 4 | 区画のある土地の区画の無い契約（#21）の登録・更新・削除は区画を動かさず `syncStatusFromLots()` で集約 |
+| 5 | 区画の自動の選択は `onProcurementChange`（利用者の操作）のときだけ。区画の無い契約の編集画面では自動で選ばない |
+| 6 | 区画のある土地で原価の API が返ったあとの原価欄は「選んだ区画の按分した原価・区画が無ければ空」（全額を残さない） |
+| 7 | #21 の形の契約を消す・付け替えると、成約で作られた区画が成約のまま残りうる。設計書 §5.4 のとおりとし、直し方（区画の欄で販売中にする）を利用者に伝える |
+| 8 | 建売（と注文住宅）の登録画面の仕入れ案件の選択肢から、全区画が取られた土地を外す |
+| 9 | 区画が要るのにまだ選んでいない間は「計算できません」を出さない |
+| 10 | 「計算できません」の文の理由を「分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い」に |
+| 11 | 「取られている」で断られて戻った画面に、取られた区画を選んだまま描かない・その区画の土地原価を出さない（建売・注文住宅） |
+| 12 | 注文住宅の「取られている」の断りは「契約」へ進むときと、区画を新しく選ぶ・変えるときだけ |
+| 13 | Task 9 を変異 → 実ブラウザ → 最後の点検 → 記録に分けて出す |
+| 14 | 不動産の契約の登録画面の `init` にも Ruling 11 と同じ直し（最後の点検の I2 で編集画面にも） |
+| 15 | 契約と建売の `refusal(…, true)` を `false` に（何も変えない保存は断らない。新しく選ぶ・付け替えるときは今どおり断る）。計画の指定から変えた |
+| 16 | 最後の点検の直しの波の範囲 = I1・I2・M1・M2（Ruling 15）・M5 ＋テスト（V1c・V2b/V2d・付け替えのステータス・Ruling 4 の建売・231 行目の `?? null`）。M3・M4・M7 は先送りして利用者に伝える。M6 は記録で |
+| 17 | 直しの波の JS は node の道具でしか見ていないので、契約の登録・編集画面だけ実ブラウザで確かめ直す |
+| 18 | `docs/RULES.md` に Bug の行は足さない（見つけて直した欠陥はどれもこの枝の新しいコードの中で、本番の欠陥ではない） |
+
+### Task 9 Step 1 変異（`7c3b79e1`）
+
+- 道具: 作業場所の `.claude/route-coverage-tools/mutate/run_lml.py`（main の `run_ll.py` の写し。SURVIVED・DIFF・MATCH(at_least) の区別・`--dry`・変異ごとの秒数・`finally` で戻す）・表 `specs_land_multi_lot.py`・結果 `results-land-multi-lot.{json,txt}`（1 回目 `.round1.*`・Step 1 の最終 `.round2.*`・直しの波のあと `.round3.*`）。main repo の同じ場所へ写した（JUnit の `lml-*.xml` は写していない）
+- 流したテスト: `tests/Feature/RealEstate`・`tests/Feature/Housing`・`tests/Unit` ＋ 走査 8 本（OldInputRuleCoverage・JapaneseValidationMessages・LongUnbrokenValueWrap・MobileLayout・NumberInputStepScan・JsEchoClassification・JsStringEchoScan・AjaxErrorFeedback）。基準 OK (2117 tests, 27190 assertions)・99 秒
+- 33 通り（計画の 32 ＋ V2d）: C0（カナリア。号地の重なりのテスト 1 本だけが落ちた＝作業場所のコードを読んでいる）・按分 A1〜A3・取られ方 T1〜T4・必須 R1・R2・断り D1・D2・D2b・状態 S1〜S4・区画の欄 L1〜L3・住宅 H1〜H3・画面 V1a〜V1d・V2a〜V2d・一覧と変える G1・G2
+- 結果: MATCH 30（そのまま 21・at_least 9）／ DIFF 0（1 回目の T1・T4 は期待の理由の書き違い → 直して流し直し MATCH。T4 はテストの 231 行目が `?? null` なしで読む脆さで別の文で落ちていた）／ **SURVIVED 3** ／ 等価 0。時間は計 約 46 分
+- 生き残った変異: V1c（契約の編集画面の区画の選択肢の `:selected` を消す。構造のアサートは登録画面だけ・実駆動の道具は x-model の値をそのまま選ぶ）／ V2b・V2d（契約の編集画面の `applyLot()` で原価・土地の契約金額を入れ替えない。編集画面で区画を変えるテストが同じ販売価格の区画どうしだった）→ テストを足さずに記録し、最後の点検の直しの波にまとめた
+
+### Task 9 Step 2 実ブラウザ（`7c3b79e1`）
+
+- 環境: 使い捨ての SQLite（接続先を確かめてから migrate）・`artisan serve`（127.0.0.1:8091・PHP 8.3）・作業場所で `vite build`（CSS の名前は本番と同じ `app-o1yvrcrl.css`＝新しい Tailwind のクラスは無い）・ログイン画面からログイン・Playwright（画面が見えている状態）
+- 土地 A: 原価合計 30,000,000・区画 1号地 132.69㎡ 20,000,000 / 2号地 100.00㎡ 10,000,000 / 3号地 110.50㎡ 10,000,000。土地 B: 区画の無い不動産の契約 1 件（#21 の形）
+- 結果はどれも OK:
+  - 1a 不動産の契約（1号地）: 選択肢 3 つ・1号地を選ぶと土地の契約金額 20,000,000・原価 15,000,000。詳細に「この区画の按分: 販売価格 20,000,000円 ÷ 全区画の販売価格の合計 40,000,000円 → 15,000,000円」・食い違いの警告なし。区画の表の紐づいているものにリンク
+  - 1b 建売（2号地）: 選択肢は 2・3号地。2号地で土地面積 100・土地原価 7,500,000
+  - 1c 注文住宅（3号地・契約）: 土地面積 110.5・土地原価 7,500,000。一覧「区画 2 / 3」・仕入れ案件は販売中
+  - 1d 全区画が取られると 3 つの登録画面の仕入れ案件の選択肢から土地 A が消える
+  - 1e 建売の契約: 土地販売価格の初期値 10,000,000（2号地の販売価格）→ 2号地が成約で仕入れ案件が**販売済**・一覧「区画 3 / 3 販売済」
+  - 2 #21 の形: 1 つ目の区画の初期値は号地 1・面積 300.00・販売価格 18,000,000・成約、2 つ目は号地 2・空・販売中。区画を 2 つ足すと仕入れ案件は販売済 → 販売中。契約の編集画面は未選択で案内が出て、何も変えずに保存できる（区画は空のまま）
+  - 3 V1c・V2b/V2d は画面では正しく動いた（保存済みの区画が選ばれる・選び直すと金額と原価が入れ替わる・付け替えで区画の状態が付いてくる）
+  - 4 古い画面から取られた区画を送ると全文で断る（契約・建売）
+  - 5 16 画面 × 1440・375px の 32 通りで `main.scrollWidth === main.clientWidth`・自社への 4xx/5xx 0・コンソールのエラー 0（警告は Google Maps の API キーが無いことだけ）
+- 懸念 1 つ（表示だけ・誤保存なし）: 不動産の契約の登録で「取られている」で断られて戻ると、Alpine の `procurementLotId` は取られた区画のまま・原価と土地の契約金額もその区画の値のまま → Ruling 14。最後の空き区画が取られると仕入れ案件の選択欄も空（この枝の前の選択肢の形）→ 後回し
+- 片付け済み（サーバ停止・symlink・セッション・コンパイル済みビュー・scratchpad）・`git status --porcelain` 空
+
+### Task 9 Step 3 最後の点検と直しの波
+
+- 最後の点検（いちばん強いモデル・読み取りだけ・`37a96107..7c3b79e1`。台帳の minor・survivor・concern の振り分けも頼んだ）: 「直してからマージ」・Critical 0・Important 2・Minor 7
+  - I1 土地を選び直すと、前の区画が入れた「土地の契約金額」が残る（登録・編集）
+  - I2 Ruling 14 の直しは編集画面の `init` にも要る（#21 の契約の編集では、案内が出たまま取られた区画の金額と原価で保存できうる）
+  - M1 `procurementChoices()` に「今の区画は残す」が無い ／ M2 契約と建売の `refusal(…, true)`（→ Ruling 15）／ M3 区画が 2 つ以上の土地を手で販売済にすると戻せない ／ M4 登録画面の原価の箱が全額 ／ M5 SQL の頭の注記 ／ M6 記録 ／ M7 #21 の土地の成約で作られた区画（Ruling 7）
+- 直しの波（Ruling 16・FIX_BASE `7c3b79e1`・5 コミット）: `a901b2d3`（I1・I2。`autoLandAmount`・`autoCostAmount`・`clearAutoAmounts()`・初めの値はサーバの `procurementLotAuto()`）・`acb0942c`（M1・M2）・`63444716`（V1c〈`:selected` の走査を不動産の契約の登録・編集と注文住宅の契約の編集へ。拾う選択欄 8 → 13〉・V2b/V2d・区画の無い土地 ↔ 区画のある土地の付け替えのステータス・Ruling 4 の建売・231 行目）・`4e5669f2`（M5）・`ac5af1b4`（土地を替えた直後に前の区画の金額が残らないこと＝変異 I1b を拾う）
+  - 直した項目は直す前に赤を確かめた（I1: 登録 '25000000'・編集 '20000000' が残った ／ I2: x-model の値が選択肢に無い ／ M1: 選択肢 [2]〈期待 [1, 2]〉）。直す前から緑のテストの穴は手で変異を当てて赤を確かめて戻した
+  - 全件 OK (5576 tests, 66056 assertions)（PHP 8.3.36・4 分 13 秒・ピーク 179.50 MB・警告なし。+14）・ビュー 327 本 / INVALID 0
+  - 変異 round 3（14 通り: C0・V1c・V2b・V2d・I1a・I1b・I1c・I2a・I2b・M1a・M2a・M2b・M2g・D1）すべて MATCH（M2g は MATCH(at_least)。try 1 は M2g の理由の文だけ DIFF＝契約どうしは入力チェックを素通りして一意の索引で 500〈決めたこと 10 の形〉→ 理由を直して MATCH）。V1c・V2b・V2d は SURVIVED → MATCH
+- 範囲を絞った点検: I1・I2・M1・M2・M5・テストの穴すべて addressed・新しい Critical・Important なし。新しく出た Minor 3 つ（区画を「— 区画を選択 —」に戻すと金額・原価が空・自動の値かは値が同じかで決める・`procurementLotAuto()` で問い合わせが 3 本増える）は残した
+- 自動のセキュリティ点検（コミットの点検・MEDIUM）: `CustomOrderController::updateStatus` の「取られているか」の確かめと保存のあいだの隙間（ほぼ同時の 2 つの保存で 1 区画に 2 件）→ 決めたこと 10 の範囲。直さず利用者に伝える
+- 直しのあとの実ブラウザ（`ac5af1b4`・Ruling 17・不動産の契約の登録と編集だけ・127.0.0.1:8092）: 5 項目すべて OK — I1 登録（1 区画の土地で 25,000,000 / 30,000,000 → 2 区画の土地に替えると区画・金額・原価とも空・手で打った 21,000,000 は残り原価だけ空）／ I2 登録（断られて戻ると区画 ''・金額と原価は空・選択肢は区画 2・3 だけ）／ I2 編集（#21: 区画 2 を選び建売に取られて断られる → 戻った画面は区画・金額・原価とも空・案内は出たまま・そのまま送ると「契約額（土地）は必須です。」「原価は必須です。」で止まり DB は区画なし・20,000,000 / 20,000,000 のまま）／ 編集をそのまま（区画 1 → 2 → 1 で 20,000,000 / 15,000,000 → 10,000,000 / 7,500,000 → 20,000,000 / 15,000,000・保存で DB は変わらない）／ 2 画面 × 1440・375px で横スクロール 0・コンソールのエラー 0。片付け済み
+
+### Task 9 Step 4 記録
+
+- `docs/BACKLOG.md` に節（本番未反映）と完了状況の 1 行・`CLAUDE.md` の「不動産 仕入れ案件」の行を「土地の区画〈複数〉」に・`docs/ARCHITECTURE.md` の `re_procurement_lots` の行に区画のステータスと削除の決まり（Task 8 で直した説明に足した）。`docs/RULES.md` は足さない（Ruling 18）
