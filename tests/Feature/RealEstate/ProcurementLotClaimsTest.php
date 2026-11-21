@@ -216,6 +216,14 @@ class ProcurementLotClaimsTest extends RealEstateScreenTestCase
         $this->assertNull(ProcurementLotClaims::refusal(null, null, true));
         $this->assertNull(ProcurementLotClaims::refusal([(string) $this->lots[1]->id], null, true));
         $this->assertNull(ProcurementLotClaims::refusal(999999, null, true));
+
+        // 保存済みの見積りの注文住宅（区画 3）が、契約に取られた区画 1 へ変える。「契約」へは進まない（selfTakes=false）
+        // → 区画を変えるので断る（設計書 §5.3。保存済みの区画と比べる分かれ目）
+        $this->assertSame(self::TAKEN_BY_CONTRACT, ProcurementLotClaims::refusal($this->lots[1]->id, $this->estimate, false));
+        // 今の区画 3 をそのまま保存する → 断らない。あとでほかに取られても断らない（Bug #130）
+        $this->assertNull(ProcurementLotClaims::refusal($this->lots[3]->id, $this->estimate, false));
+        $this->orderOn($this->land, $this->lots[3], 'contracted', 'CO-004', '区画 3 の注文住宅');
+        $this->assertNull(ProcurementLotClaims::refusal($this->lots[3]->id, $this->estimate, false));
     }
 
     public function test_taker_label_names_each_kind(): void
