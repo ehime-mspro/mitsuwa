@@ -382,6 +382,57 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
     }
 
     // ============================================================
+    // 食い違ったデータ（今の区画にほかのものも付いている。同時の保存でだけ起きる）と付け替え（最後の点検の M1・M2・Ruling 15）
+    // ============================================================
+
+    /**
+     * M1: 今の区画は、ほかの建売にも付いているときも、編集画面の選択肢に残して選んだまま描く
+     * （selectableLots() と同じ。消すと選択欄から今の区画が消え、そのまま保存できない＝Bug #130 の形）。
+     */
+    public function test_the_edit_screen_keeps_the_current_lot_even_if_it_is_also_taken_elsewhere(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $contract = $this->contractOn($land, $first);
+        $this->buildingOn($land, $first);
+
+        $html = $this->htmlOf(route('realestate.contracts.edit', $contract));
+
+        $this->assertSame([$first->id, $second->id], $this->lotOptionIds($html, 'contractEditForm', $land, 'contractEditForm()'), '今の区画が選択肢から消えた');
+        $form = $this->browserForm($html, $this->editNeedle($contract), 'contractEditForm');
+        $this->assertSame([(string) $first->id, '20000000', '20000000'], $this->lotAndAmounts($form), '今の区画が選ばれていない（か金額が外れた）');
+    }
+
+    /** M2・Ruling 15: 同じ食い違ったデータでも、何も変えない保存は断らない（契約には「この保存で区画を取る」瞬間が無い） */
+    public function test_an_unchanged_save_passes_even_if_the_lot_is_also_taken_elsewhere(): void
+    {
+        [$land, $first] = $this->twoLotLand();
+        $contract = $this->contractOn($land, $first);
+        $this->buildingOn($land, $first);
+        $url = route('realestate.contracts.edit', $contract);
+
+        $form = $this->fill($this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm'), ['memo' => '鍵は 2 本']);
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約情報を更新しました。');
+        $this->assertSame([$first->id, '鍵は 2 本'], [$contract->fresh()->procurement_lot_id, $contract->fresh()->memo]);
+    }
+
+    /** Ruling 15: 付け替える区画が取られていれば、今どおり断る（refusal() の $selfTakes を false にしても、変えた区画は見る） */
+    public function test_switching_to_a_taken_lot_is_still_refused(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $contract = $this->contractOn($land, $first);
+        $url = route('realestate.contracts.edit', $contract);
+        $stale = $this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm', $this->chooseLot($second));
+        $this->buildingOn($land, $second, 'HS-LOT-002', '区画 2 の建売');   // 開いたあとで、建売が区画 2 を取った
+
+        $html = $this->landed($this->submit($stale, $url));
+
+        $this->assertErrorItem($html, 'この区画（2号地）は建売物件「HS-LOT-002 区画 2 の建売」に紐づいています。ほかの区画を選んでください。');
+        $this->assertSame($first->id, $contract->fresh()->procurement_lot_id);
+    }
+
+    // ============================================================
     // ステータス（設計書 §5.4）
     // ============================================================
 

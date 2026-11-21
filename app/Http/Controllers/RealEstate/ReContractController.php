@@ -596,7 +596,7 @@ class ReContractController extends Controller
      * 契約の画面の仕入れ案件の選択肢と、区画の選択肢（決めたこと 8。API を足さず、サーバが最初から渡す。Top trap #3）。
      *
      * 仕入れ案件: 販売中で「区画が無く契約も無い案件」と「取られていない区画のある土地」（$current は今の案件も）。
-     * 区画: 仕入れ案件 id => 取られていない区画と $current の区画（号地の順）。ラベル・販売価格・按分した原価（landCostForLot()）を持つ。
+     * 区画: 仕入れ案件 id => 取られていない区画と $current の区画（ほかにも付いていても残す。号地の順）。ラベル・販売価格・按分した原価（landCostForLot()）を持つ。
      *
      * ⚠ 取られているかは紐付けで決める（ProcurementLotClaims。区画のステータスでは決めない）。
      * ⚠ 区画のある土地ごとに selectableLots() を呼ぶと 1 件 5 問い合わせになるので、区画と原価をまとめて読み、
@@ -620,10 +620,13 @@ class ReContractController extends Controller
 
         $lotted = $candidates->filter(fn (ReProcurement $p) => $p->lots->isNotEmpty());
         $taken = ProcurementLotClaims::takenLotIds($lotted->pluck('id')->all(), $current);
+        // 今の区画は、ほかにも付いていても残す（同時の保存でだけ起きる食い違ったデータでも、選択欄から消さず、そのまま保存できるように。
+        // ProcurementLotClaims::selectableLots() と同じ。Bug #130・最後の点検の M1）
+        $held = $this->idOf($current?->getRawOriginal('procurement_lot_id'));
 
         $options = [];
         foreach ($lotted as $p) {
-            $free = $p->lots->reject(fn (ReProcurementLot $lot) => in_array((int) $lot->id, $taken, true));
+            $free = $p->lots->reject(fn (ReProcurementLot $lot) => in_array((int) $lot->id, $taken, true) && (int) $lot->id !== $held);
             if ($free->isEmpty()) {
                 continue;
             }
@@ -810,13 +813,15 @@ class ReContractController extends Controller
             'procurement_id.unique'       => 'この仕入れ案件にはすでに契約があります。契約の一覧で確かめてください。',
             'procurement_lot_id.required' => '区画を選んでください。',
         ], ['address' => '所在地'])->after(function ($validator) use ($request, $contractType, $current) {
-            // 1 つの区画に付けられる契約・建売・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。区画や案件にほかの誤りがあれば見ない
+            // 1 つの区画に付けられる契約・建売・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。区画や案件にほかの誤りがあれば見ない。
+            // 契約には「この保存で区画を取る」瞬間が無い（新しく選ぶ・付け替える区画は refusal() が「変えた」で見る）ので $selfTakes は false。
+            // 今の区画のままの保存は、ほかにも付いている食い違ったデータでも断らない（Bug #130・Ruling 15）
             if (! $contractType->isProcurement()
                 || $validator->errors()->has('procurement_lot_id')
                 || $validator->errors()->has('procurement_id')) {
                 return;
             }
-            $refusal = ProcurementLotClaims::refusal($request->input('procurement_lot_id'), $current, true);
+            $refusal = ProcurementLotClaims::refusal($request->input('procurement_lot_id'), $current, false);
             if ($refusal !== null) {
                 $validator->errors()->add('procurement_lot_id', $refusal);
             }

@@ -504,14 +504,15 @@ class PropertyController extends Controller
                 $validator->errors()->add('land_source_type', HsProperty::LAND_LOCKED_BY_CONTRACT);
             }
 
-            // 1 つの区画に付けられる建売・契約・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。
-            // 建売は契約の前から区画を取る（$selfTakes = true）。区画や仕入れ案件にほかの誤りがあれば見ない
+            // 1 つの区画に付けられる建売・契約・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。区画や仕入れ案件にほかの誤りがあれば見ない。
+            // 建売は契約の前から区画を取るが、取るのは登録と付け替えのとき（refusal() が「変えた」で見る）なので $selfTakes は false。
+            // 今の区画のままの保存は、ほかにも付いている食い違ったデータでも断らない（Bug #130・Ruling 15）
             if (! $isProcurement
                 || $validator->errors()->has('re_procurement_lot_id')
                 || $validator->errors()->has('re_procurement_id')) {
                 return;
             }
-            $refusal = ProcurementLotClaims::refusal($request->input('re_procurement_lot_id'), $current, true);
+            $refusal = ProcurementLotClaims::refusal($request->input('re_procurement_lot_id'), $current, false);
             if ($refusal !== null) {
                 $validator->errors()->add('re_procurement_lot_id', $refusal);
             }

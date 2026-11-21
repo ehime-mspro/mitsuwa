@@ -368,6 +368,38 @@ class ProcurementLotPropertyTest extends HousingScreenTestCase
         $this->assertNull($property->fresh()->re_procurement_lot_id);
     }
 
+    /** M2・Ruling 15: 食い違ったデータ（今の区画に不動産の契約も付いている。同時の保存でだけ起きる）でも、建売の何も変えない保存は断らない */
+    public function test_an_unchanged_building_save_passes_even_if_the_lot_is_also_taken_elsewhere(): void
+    {
+        [$land, $first] = $this->twoLotLand();
+        $property = $this->propertyOn($land, $first);
+        ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted', 'contract_date' => '2026-09-01',
+            'property_name' => '勝山の土地', 'procurement_id' => $land->id, 'procurement_lot_id' => $first->id,
+            'contract_amount_land' => 20000000, 'cost_amount' => 20000000, 'created_by' => $this->user->id,
+        ]);
+        $url = route('housing.properties.edit', $property);
+
+        $html = $this->landed($this->submit($this->fill($this->editForm($property), ['notes' => '外構は別途']), $url));
+
+        $this->assertFlash($html, 'success', '建売物件「HS-001」を更新しました。');
+        $this->assertSame([$first->id, '外構は別途'], [$property->fresh()->re_procurement_lot_id, $property->fresh()->notes]);
+    }
+
+    /** Ruling 15: 区画を付け替える（手で組んだ送信）とき、その区画が取られていれば今どおり断る（変えた区画は見る） */
+    public function test_switching_a_building_to_a_taken_lot_is_still_refused(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $property = $this->propertyOn($land, $first);
+        $this->propertyOn($land, $second, ['property_code' => 'HS-002', 'property_name' => '区画 2 の建売']);
+        $url = route('housing.properties.edit', $property);
+
+        $html = $this->landed($this->submit($this->fill($this->editForm($property), ['re_procurement_lot_id' => (string) $second->id]), $url));
+
+        $this->assertErrorItem($html, 'この区画（2号地）は建売物件「HS-002 区画 2 の建売」に紐づいています。ほかの区画を選んでください。');
+        $this->assertSame($first->id, $property->fresh()->re_procurement_lot_id);
+    }
+
     // ============================================================
     // 建売の契約（区画のステータス・土地販売価格の初期値）
     // ============================================================
