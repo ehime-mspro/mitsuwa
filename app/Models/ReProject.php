@@ -9,6 +9,7 @@ use App\Models\ReCostItem;
 use App\Models\ReProjectCost;
 use App\Support\AreaConverter;
 use App\Support\DeletionBlockers;
+use App\Support\LandCostAllocation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -243,14 +244,13 @@ class ReProject extends Model
         return $this->allocatedLandCost($lot, $this->getEffectiveCostTotal(), $this->getLotSellingPriceTotal(), $this->allLotsHaveSellingPrice());
     }
 
-    /** 分譲地の原価の合計を区画の販売価格で按分する（全区画に販売価格があるときだけ） */
+    /**
+     * 分譲地の原価の合計を区画の販売価格で按分する（全区画に販売価格があるときだけ）。
+     * 式は LandCostAllocation の 1 か所（土地の仕入れ案件の区画も同じ式を使う。Bug #41）。
+     */
     private function allocatedLandCost(ReProjectLot $lot, int $costTotal, int $sellingTotal, bool $allPriced): ?int
     {
-        if (! $allPriced || $sellingTotal <= 0) {
-            return null;
-        }
-
-        return (int) round($costTotal * ($lot->selling_price / $sellingTotal));
+        return LandCostAllocation::share($costTotal, $lot->selling_price, $sellingTotal, $allPriced);
     }
 
     /**

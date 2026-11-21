@@ -13,6 +13,7 @@ use App\Models\ReProcurementCost;
 use App\Support\AreaConverter;
 use App\Support\ConsumptionTax;
 use App\Support\DeletionBlockers;
+use App\Support\LandCostAllocation;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -136,6 +137,83 @@ class ReProcurement extends Model
             || HsCustomOrder::where('re_procurement_id', $this->id)->whereIn('status', $contractedOrder)->exists();
 
         return $sold ? LotStatus::Sold : LotStatus::OnSale;
+    }
+
+    /** 全区画の販売価格の合計（ReProject と同じ名前） */
+    public function getLotSellingPriceTotal(): int
+    {
+        return (int) $this->lots->sum('selling_price');
+    }
+
+    /** 全区画に販売価格が入っているか（区画が無ければ false。ReProject と同じ名前） */
+    public function allLotsHaveSellingPrice(): bool
+    {
+        if ($this->lots->isEmpty()) {
+            return false;
+        }
+
+        return $this->lots->every(fn (ReProcurementLot $lot) => $lot->selling_price !== null && $lot->selling_price > 0);
+    }
+
+    /**
+     * 区画を選んだ契約・建売・注文住宅の土地原価（設計書 §5.5）。もとの額は原価の合計（getEffectiveCostTotal()）。
+     *
+     * - 区画が 0〜1 つ: 区画を選んでいない（null）か、この案件の区画なら全額（区画が 1 つなら販売価格が空でも全額）
+     * - 区画が 2 つ以上: この案件の区画なら販売価格の比率で按分（LandCostAllocation。分譲地と同じ式）。
+     *   全区画に販売価格が無い・合計が 0 なら null。区画を選んでいない（null）なら null（どの区画の分か分からない）
+     * - ほかの案件の区画は null
+     */
+    public function landCostForLot(?int $lotId): ?int
+    {
+        $lot = $lotId === null ? null : $this->lots->firstWhere('id', $lotId);
+        if ($lotId !== null && $lot === null) {
+            return null;
+        }
+
+        if ($this->lots->count() <= 1) {
+            return $this->getEffectiveCostTotal();
+        }
+
+        if ($lot === null) {
+            return null;
+        }
+
+        return LandCostAllocation::share(
+            $this->getEffectiveCostTotal(),
+            $lot->selling_price,
+            $this->getLotSellingPriceTotal(),
+            $this->allLotsHaveSellingPrice(),
+        );
+    }
+
+    /**
+     * 区画の成約状況から仕入れ案件のステータスを集約する（設計書 §5.4。ReProject::syncStatusFromLots() と同じ決まり）。
+     *
+     * - 全区画が成約（区画 1 つ以上）→ 販売済（今が販売済・不成約なら触らない）
+     * - 成約でない区画があるのに販売済 → 販売中
+     * - 区画 0 の案件・上のどれにも当たらない案件は触らない（区画の無い土地は今どおり。every() が空で true を返す事故も防ぐ）
+     *
+     * 更新はクエリビルダで行う（モデルイベントを通さない＝建物欄の正規化・物件購入費の同期は動かない。updated_by は据え置き）。
+     * 手元の status もそろえる。
+     * ⚠ 区画のステータスが動く経路（区画の登録・更新・削除、ReProcurementLot::markSold() / markOnSale()）から呼ぶ。
+     */
+    public function syncStatusFromLots(): void
+    {
+        $lots = ReProcurementLot::where('procurement_id', $this->id)->get(['status']);
+        if ($lots->isEmpty()) {
+            return;
+        }
+
+        $allSold = $lots->every(fn (ReProcurementLot $lot) => $lot->status === LotStatus::Sold);
+        $current = $this->status;
+
+        if ($allSold && ! in_array($current, [ProcurementStatus::Sold, ProcurementStatus::Lost], true)) {
+            self::where('id', $this->id)->update(['status' => ProcurementStatus::Sold->value]);
+            $this->status = ProcurementStatus::Sold;
+        } elseif (! $allSold && $current === ProcurementStatus::Sold) {
+            self::where('id', $this->id)->update(['status' => ProcurementStatus::Selling->value]);
+            $this->status = ProcurementStatus::Selling;
+        }
     }
 
     /** 区画のある土地の物件種別を土地以外へ変えようとしたときの断り（編集画面） */

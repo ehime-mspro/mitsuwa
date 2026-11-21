@@ -94,13 +94,54 @@ class ReProcurementLot extends Model
         return $label;
     }
 
-    /** その仕入れ案件の区画だけを成約にする（null・区画なしなら何もしない） */
+    /**
+     * 区画の選択欄の選択肢（設計書 §5.3）。例: 1号地 132.69㎡（40.13坪） 販売価格 25,000,000円 販売中
+     * 販売価格が空なら販売価格の部分は無い（summaryLabel() のとおり）。
+     */
+    public function optionLabel(): string
+    {
+        return $this->summaryLabel() . ' ' . $this->status->label();
+    }
+
+    /**
+     * その区画だけを成約にし、その仕入れ案件のステータスを集約する（設計書 §5.4。null・無い区画なら何もしない）。
+     * ⚠ 区画のステータスは紐付けに付いてくる。紐づけ先の区画を付け替えたら、旧の区画を markOnSale()・新の区画を markSold()。
+     */
+    public static function markSold(?int $lotId): void
+    {
+        self::mark($lotId, LotStatus::Sold);
+    }
+
+    /** その区画だけを販売中にし、その仕入れ案件のステータスを集約する（null・無い区画なら何もしない） */
+    public static function markOnSale(?int $lotId): void
+    {
+        self::mark($lotId, LotStatus::OnSale);
+    }
+
+    private static function mark(?int $lotId, LotStatus $status): void
+    {
+        $lot = $lotId === null ? null : self::find($lotId);
+        if ($lot === null) {
+            return;
+        }
+
+        self::query()->whereKey($lot->id)->update(['status' => $status->value]);
+        ReProcurement::find($lot->procurement_id)?->syncStatusFromLots();
+    }
+
+    /**
+     * その仕入れ案件の区画だけを成約にする（null・区画なしなら何もしない）。
+     * ⚠ 仕入れ案件の全区画を動かす古い形（1 案件 1 区画の前提）。呼ぶ側を markSold() へ移したら消す（計画の Task 8）。
+     */
     public static function markSoldFor(?int $procurementId): void
     {
         self::markFor($procurementId, LotStatus::Sold);
     }
 
-    /** その仕入れ案件の区画だけを販売中にする（null・区画なしなら何もしない） */
+    /**
+     * その仕入れ案件の区画だけを販売中にする（null・区画なしなら何もしない）。
+     * ⚠ 古い形。呼ぶ側を markOnSale() へ移したら消す（計画の Task 8）。
+     */
     public static function markOnSaleFor(?int $procurementId): void
     {
         self::markFor($procurementId, LotStatus::OnSale);

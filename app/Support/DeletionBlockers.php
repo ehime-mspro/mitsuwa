@@ -9,7 +9,7 @@ use App\Models\ReProject;
 use Illuminate\Support\Collection;
 
 /**
- * 削除ブロッカー — 仕入れ案件 / 分譲地PJ / 区画を参照していて、
+ * 削除ブロッカー — 仕入れ案件 / 分譲地PJ / 区画（分譲地の区画・土地の仕入れ案件の区画）を参照していて、
  * 消すと他モジュールのレコードが壊れるデータを集める。
  *
  * ブロック対象は 契約(re_contracts) / 建売物件(hs_properties) / 注文住宅(hs_custom_orders) の 3 種のみ。
@@ -70,6 +70,55 @@ class DeletionBlockers
         $contracts  = self::lotScopedContracts($lotIds)->groupBy(fn (ReContract $c) => (int) $c->lot_id);
         $properties = $propertiesAll->groupBy(fn (HsProperty $p) => (int) $p->re_project_lot_id);
         $orders     = $ordersAll->groupBy(fn (HsCustomOrder $o) => (int) $o->re_project_lot_id);
+
+        $result = [];
+        foreach ($lotIds as $lotId) {
+            $result[(int) $lotId] = self::assemble(
+                $contracts->get((int) $lotId, collect()),
+                $properties->get((int) $lotId, collect()),
+                $orders->get((int) $lotId, collect()),
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * 指定した土地の仕入れ案件の区画（re_procurement_lots）を参照しているデータ（設計書 §5.2）。
+     * 契約は procurement_lot_id、建売・注文住宅は re_procurement_lot_id。注文住宅は**全部のステータス**を数える
+     * （見積りの注文住宅も区画を指しているので、消すと指している側が壊れる。外部キーは ON DELETE RESTRICT）。
+     *
+     * @param  array<int>  $lotIds
+     * @return array<int, array{label: string, items: array<int, array{name: string, url: string}>}>
+     */
+    public static function forProcurementLotIds(array $lotIds): array
+    {
+        if ($lotIds === []) {
+            return [];
+        }
+
+        [$properties, $orders] = self::procurementLotScopedHousing($lotIds);
+
+        return self::assemble(self::procurementLotScopedContracts($lotIds), $properties, $orders);
+    }
+
+    /**
+     * 土地の区画ごとのブロッカー（区画の表の各行に紐づいているものを出す・削除を断る）。forEachLotId() と同じ形。
+     * 区画数によらずバルククエリ 3 本だけで全区画分を組む。
+     *
+     * @param  array<int>  $lotIds
+     * @return array<int, array<int, array{label: string, items: array<int, array{name: string, url: string}>}>> 区画 id => ブロッカー配列（空配列 = 削除可能）
+     */
+    public static function forEachProcurementLotId(array $lotIds): array
+    {
+        if ($lotIds === []) {
+            return [];
+        }
+
+        [$propertiesAll, $ordersAll] = self::procurementLotScopedHousing($lotIds);
+        $contracts  = self::procurementLotScopedContracts($lotIds)->groupBy(fn (ReContract $c) => (int) $c->procurement_lot_id);
+        $properties = $propertiesAll->groupBy(fn (HsProperty $p) => (int) $p->re_procurement_lot_id);
+        $orders     = $ordersAll->groupBy(fn (HsCustomOrder $o) => (int) $o->re_procurement_lot_id);
 
         $result = [];
         foreach ($lotIds as $lotId) {
@@ -198,11 +247,34 @@ class DeletionBlockers
     }
 
     /**
+     * 土地の区画群を参照している住宅事業のレコード（建売・注文住宅。注文住宅は全部のステータス）。
+     * 列の定義はここ 1 箇所（lotScopedHousing() の分譲地の区画と取り違えない。Bug #41 / #42）。
+     *
+     * @param  array<int>  $lotIds
+     * @return array{0: Collection, 1: Collection} [建売物件, 注文住宅]
+     */
+    private static function procurementLotScopedHousing(array $lotIds): array
+    {
+        return [
+            HsProperty::whereIn('re_procurement_lot_id', $lotIds)->get(),
+            HsCustomOrder::whereIn('re_procurement_lot_id', $lotIds)->get(),
+        ];
+    }
+
+    /** 土地の区画群を参照している契約（procurement_lot_id。分譲地の区画の lot_id とは別の列） */
+    private static function procurementLotScopedContracts(array $lotIds): Collection
+    {
+        return ReContract::with('buyer')->whereIn('procurement_lot_id', $lotIds)->get();
+    }
+
+    /**
      * 種別ごとにまとめる。items が空の種別はエントリごと含めない。
+     * 項目の名前の形（契約「物件名（買主 様）」・建売物件「番号 名前」・注文住宅「番号 名前」）はここ 1 か所。
+     * ProcurementLotClaims::takerLabel()（区画が取られているときの文）も同じ形を使うため public。
      *
      * @return array<int, array{label: string, items: array<int, array{name: string, url: string}>}>
      */
-    private static function assemble(Collection $contracts, Collection $properties, Collection $orders): array
+    public static function assemble(Collection $contracts, Collection $properties, Collection $orders): array
     {
         // 呼び出し元の with('buyer') 忘れを静かな N+1 にしない（読み込み済みなら no-op）。
         // ⚠ 空の $contracts は forEachLotId() の get($key, collect()) フォールバックで
