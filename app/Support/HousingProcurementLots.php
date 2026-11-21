@@ -71,12 +71,22 @@ final class HousingProcurementLots
 
     /**
      * 建売・注文住宅の登録と編集の画面（_form）の仕入れ案件の選択肢（決済完了・販売中。JS に渡す形）。
+     * 編集画面は $current の今の仕入れ案件を、ステータスに関わらず残す（土地の全区画が売れると仕入れ案件は「販売済」になるが、
+     * その土地の見積りの注文住宅・区画の無い注文住宅は、今の紐付けのまま保存できなければならない。決めたこと 4・Review Focus 4）。
+     * 登録画面（$current が null）には「販売済」などの土地を出さない。
      *
      * @return array<int, array{id: int, code: string, name: string, address: ?string}>
      */
     public static function formOptions(HsProperty|HsCustomOrder|null $current): array
     {
-        $procurements = ReProcurement::whereIn('status', ['settled', 'selling'])
+        $currentId = self::digits($current?->getRawOriginal('re_procurement_id'));
+        $procurements = ReProcurement::query()
+            ->where(function ($query) use ($currentId) {
+                $query->whereIn('status', ['settled', 'selling']);
+                if ($currentId !== null) {
+                    $query->orWhere('id', $currentId);
+                }
+            })
             ->orderByDesc('id')
             ->get(['id', 'procurement_code', 'property_name', 'address']);
 

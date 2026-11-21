@@ -63,6 +63,20 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         ]);
     }
 
+    /**
+     * 区画を取る不動産の契約を、契約の登録の画面と同じ送り先から登録する（区画が成約になり、全区画が売れた土地は「販売済」になる）。
+     * ⚠ takeByContract() は紐付けだけで区画の状態を動かさない（仕入れ案件は「販売中」のまま）
+     */
+    private function sellByContract(ReProcurement $land, ReProcurementLot $lot): void
+    {
+        $this->actingAs($this->user)->post(route('realestate.contracts.store'), [
+            'contract_type' => 'procurement_land', 'procurement_id' => $land->id, 'procurement_lot_id' => $lot->id,
+            'contract_date' => '2026-09-01', 'buyer_id' => $this->buyer('高橋', '一郎')->id,
+            'contract_amount_land' => 20000000, 'cost_amount' => 15000000, 'property_name' => '勝山の土地',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('sold', $land->fresh()->status->value, 'テストの前提: 全区画が売れた土地が「販売済」になっていない');
+    }
+
     private function createUrl(): string
     {
         return route('housing.custom-orders.create');
@@ -390,6 +404,39 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
 
         $this->assertErrorItem($html, self::TAKEN_BY_CONTRACT);
         $this->assertSame(['estimation', $first->id], [$order->fresh()->status->value, $order->fresh()->re_procurement_lot_id]);
+    }
+
+    /**
+     * 決めたこと 4・Review Focus 4: 土地の全区画が売れて仕入れ案件が「販売済」になっても、その土地の見積りの注文住宅（区画あり）と
+     * 区画の無い注文住宅は、編集画面と契約の編集をそのまま保存できる（今の仕入れ案件は選択肢に残す）。新しい注文住宅には出さない
+     */
+    public function test_orders_on_a_sold_out_land_save_unchanged(): void
+    {
+        $land = $this->landProcurement();
+        $lot = $this->procurementLot($land);
+        $estimate = $this->orderForContractEdit($land, $lot, ['status' => 'estimation']);
+        $legacy = $this->orderForContractEdit($land, null, ['order_code' => 'CO-002', 'status' => 'estimation']);
+        $this->sellByContract($land, $lot);
+
+        $run = $this->driveAlpine($this->htmlOf($this->createUrl()), 'customOrderForm', 'customOrderForm()', '', evaluate: ['data.procurements.map(function (p) { return p.id; })']);
+        $this->assertSame([], $run['evaluated'][0], '販売済の土地を新しい注文住宅の選択肢に出している');
+
+        foreach ([[$estimate, $lot->id, 'CO-001'], [$legacy, null, 'CO-002']] as [$order, $lotId, $code]) {
+            $url = route('housing.custom-orders.edit', $order);
+            $form = $this->fill($this->customOrderEditForm($order), ['notes' => '外構は別途']);
+            $this->assertSame([(string) $land->id, $lotId === null ? null : (string) $lotId],
+                [$form['fields']['re_procurement_id'] ?? null, $form['fields']['re_procurement_lot_id'] ?? null], "{$code}: 編集画面で今の仕入れ案件か区画が選ばれていない");
+            $this->assertFlash($this->landed($this->submit($form, $url)), 'success', "注文住宅案件「{$code}」を更新しました。");
+
+            $contractUrl = route('housing.contracts.edit-custom-order', $order);
+            $form = $this->fill($this->contractEditForm($order->fresh(), $this->htmlOf($contractUrl)), ['notes' => '鍵は 2 本']);
+            $this->assertFlash($this->landed($this->submit($form, $contractUrl)), 'success', '契約を更新しました。');
+
+            $order->refresh();
+            $this->assertSame([$land->id, $lotId, 5000000, '鍵は 2 本'],
+                [$order->re_procurement_id, $order->re_procurement_lot_id, $order->land_cost, $order->notes], "{$code}: そのまま保存で紐付けか土地原価が動いた");
+        }
+        $this->assertSame(['sold', 'sold'], $this->statuses($land, $lot), '見積りの注文住宅の保存で区画か土地の状態が動いた');
     }
 
     /** Review Focus 2: 区画をほかに取られた見積りの注文住宅を、一覧の小窓から「契約」へ進める → 422 で理由を出し、何も変えない */

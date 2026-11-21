@@ -412,6 +412,31 @@ class ProcurementLotPropertyTest extends HousingScreenTestCase
         $this->assertSame(1, HsContract::count());
     }
 
+    /**
+     * 建売の契約で土地の全区画が売れて仕入れ案件が「販売済」になっても、その建売の編集画面はそのまま保存でき、選択肢に今の仕入れ案件が残る
+     * （建売の編集画面の土地は読み取り専用。新しい建売には販売済の土地を出さない）
+     */
+    public function test_a_building_on_a_sold_out_land_saves_unchanged(): void
+    {
+        $land = $this->landProcurement();
+        $lot = $this->procurementLot($land);
+        $property = $this->propertyOn($land, $lot, ['land_cost' => 9600000, 'is_land_cost_manual' => false]);
+        $this->registerContract($property);
+        $this->assertSame(['sold', 'sold'], $this->statuses($land, $lot), 'テストの前提: 全区画が売れた土地が「販売済」になっていない');
+        $ids = ['data.procurements.map(function (p) { return p.id; })'];
+
+        $run = $this->driveAlpine($this->htmlOf($this->createUrl()), 'housingPropertyForm', 'housingPropertyForm()', '', evaluate: $ids);
+        $this->assertSame([], $run['evaluated'][0], '販売済の土地を新しい建売の選択肢に出している');
+        $run = $this->driveAlpine($this->htmlOf(route('housing.properties.edit', $property)), 'housingPropertyForm', 'housingPropertyForm()', '', evaluate: $ids);
+        $this->assertSame([$land->id], $run['evaluated'][0], '編集画面で今の仕入れ案件が選択肢から消えた');
+
+        $html = $this->landed($this->submit($this->editForm($property), route('housing.properties.edit', $property)));
+
+        $this->assertFlash($html, 'success', '建売物件「HS-001」を更新しました。');
+        $property->refresh();
+        $this->assertSame([$land->id, $lot->id, 9600000], [$property->re_procurement_id, $property->re_procurement_lot_id, $property->land_cost], 'そのまま保存で紐付けか土地原価が動いた');
+    }
+
     /** 決めたこと 1: 建売の契約の土地販売価格の初期値は区画の販売価格（区画の販売価格が空なら空。土地全体の価格にしない） */
     public function test_the_contract_default_land_price_comes_from_the_lot(): void
     {
