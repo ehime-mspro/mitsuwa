@@ -128,31 +128,4 @@ class ReProcurementLot extends Model
         self::query()->whereKey($lot->id)->update(['status' => $status->value]);
         ReProcurement::find($lot->procurement_id)?->syncStatusFromLots();
     }
-
-    /**
-     * その仕入れ案件の区画だけを成約にする（null・区画なしなら何もしない）。
-     * ⚠ 仕入れ案件の全区画を動かす古い形（1 案件 1 区画の前提）。呼ぶ側を markSold() へ移したら消す（計画の Task 8）。
-     */
-    public static function markSoldFor(?int $procurementId): void
-    {
-        self::markFor($procurementId, LotStatus::Sold);
-    }
-
-    /**
-     * その仕入れ案件の区画だけを販売中にする（null・区画なしなら何もしない）。
-     * ⚠ 古い形。呼ぶ側を markOnSale() へ移したら消す（計画の Task 8）。
-     */
-    public static function markOnSaleFor(?int $procurementId): void
-    {
-        self::markFor($procurementId, LotStatus::OnSale);
-    }
-
-    private static function markFor(?int $procurementId, LotStatus $status): void
-    {
-        if ($procurementId === null) {
-            return;
-        }
-
-        self::query()->where('procurement_id', $procurementId)->update(['status' => $status->value]);
-    }
 }

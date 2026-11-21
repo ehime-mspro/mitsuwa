@@ -104,7 +104,7 @@
                                     class="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50">編集</button>
                             @if($canDeleteLot)
                             <form id="lot-delete-form-{{ $lot->id }}" method="POST" action="{{ route('realestate.procurements.lots.destroy', [$procurement, $lot]) }}"
-                                  onsubmit="return confirm('区画を削除しますか？ 登録した面積・販売価格などが消えます（契約・建売・注文住宅の紐付けは消えません）。')">
+                                  onsubmit="return confirm('区画を削除しますか？ 登録した面積・販売価格などが消えます。')">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="px-3 py-1.5 border border-red-300 text-red-700 text-sm rounded-md hover:bg-red-50">削除</button>

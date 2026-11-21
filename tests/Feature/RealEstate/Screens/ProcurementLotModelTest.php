@@ -175,16 +175,16 @@ class ProcurementLotModelTest extends RealEstateScreenTestCase
         $lotA = $this->procurementLot($a);
         $lotB = $this->procurementLot($b);
 
-        ReProcurementLot::markSoldFor($a->id);
+        ReProcurementLot::markSold($lotA->id);
         $this->assertSame(LotStatus::Sold, $lotA->fresh()->status);
         $this->assertSame(LotStatus::OnSale, $lotB->fresh()->status);
 
-        ReProcurementLot::markOnSaleFor($a->id);
+        ReProcurementLot::markOnSale($lotA->id);
         $this->assertSame(LotStatus::OnSale, $lotA->fresh()->status);
 
-        ReProcurementLot::markSoldFor(null);
-        ReProcurementLot::markOnSaleFor(null);
-        ReProcurementLot::markSoldFor(999999);
+        ReProcurementLot::markSold(null);
+        ReProcurementLot::markOnSale(null);
+        ReProcurementLot::markSold(999999);
         $this->assertSame(LotStatus::OnSale, $lotA->fresh()->status);
         $this->assertSame(LotStatus::OnSale, $lotB->fresh()->status);
     }

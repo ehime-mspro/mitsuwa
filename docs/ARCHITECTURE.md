@@ -87,19 +87,19 @@ manage/
 
 | Table | Purpose |
 |-------|---------|
-| `re_contracts` | 不動産契約 (5種別統合, department列で住宅事業にも拡張可能) |
+| `re_contracts` | 不動産契約 (5種別統合, department列で住宅事業にも拡張可能。`procurement_lot_id` ＝ 土地の区画への紐付け・一意・→ `re_procurement_lots.id`) |
 | `re_procurements` | 仕入れ案件 |
 | `re_procurement_costs` | 仕入れ原価明細 |
-| `re_procurement_lots` | 土地の仕入れ案件の区画（1 案件に 1 つ。`procurement_id` が一意・案件を消すと区画も消える。坪数・坪単価は保存しない） |
+| `re_procurement_lots` | 土地の仕入れ案件の区画（1 案件に何区画でも。号地番号は同じ土地の中で重ならない（入力チェック）・案件を消すと区画も消える。坪数・坪単価は保存しない。区画に付けられるのは契約・建売・契約以降の注文住宅のうち 1 件） |
 | `re_projects` | 分譲地PJ（`source_procurement_code` ＝ 土地から変えた分譲地の元の仕入れ案件番号。直接登録した分譲地は空） |
 | `re_project_costs` | 分譲地原価明細 |
 | `re_project_lots` | 分譲地区画 |
 | `re_project_drawings` | 区画図面 |
 | `re_suppliers` | 仕入れ先 |
 | `re_cost_items` | 原価項目マスタ |
-| `hs_properties` | 建売物件 |
+| `hs_properties` | 建売物件（`re_procurement_lot_id` ＝ 土地元の区画・→ `re_procurement_lots.id`） |
 | `hs_contracts` | 建売契約 |
-| `hs_custom_orders` | 注文住宅 |
+| `hs_custom_orders` | 注文住宅（`re_procurement_lot_id` ＝ 土地元の区画・→ `re_procurement_lots.id`） |
 | `schedule_steps` | 工程表（ポリモーフィック。仕入れ案件 / 分譲地PJ / 建売物件 / 注文住宅 の 4 親）|
 | `buyers` | 買主マスタ (SoftDeletes) |
 | `buyer_departments` | 買主×部署紐付け（ランク・取得日。UNIQUE(buyer_id, department)）|

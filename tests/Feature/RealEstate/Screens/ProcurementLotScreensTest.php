@@ -31,7 +31,7 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
 
     private const DUPLICATE = 'この号地番号はこの土地にすでにあります。別の番号にしてください。';
 
-    private const DELETE_CONFIRM = "onsubmit=\"return confirm('区画を削除しますか？ 登録した面積・販売価格などが消えます（契約・建売・注文住宅の紐付けは消えません）。')\"";
+    private const DELETE_CONFIRM = "onsubmit=\"return confirm('区画を削除しますか？ 登録した面積・販売価格などが消えます。')\"";
 
     private function editForm(ReProcurementLot $lot): string
     {

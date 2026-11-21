@@ -18,7 +18,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class ReProcurement extends Model
@@ -113,12 +112,6 @@ class ReProcurement extends Model
     public function lots(): HasMany
     {
         return $this->hasMany(ReProcurementLot::class, 'procurement_id')->orderBy('lot_number');
-    }
-
-    /** 土地の区画（1 案件に 1 区画まで。⚠ Task 8 で消す。新しい処理は lots() を使う） */
-    public function lot(): HasOne
-    {
-        return $this->hasOne(ReProcurementLot::class, 'procurement_id');
     }
 
     /**

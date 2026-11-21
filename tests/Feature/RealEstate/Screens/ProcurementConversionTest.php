@@ -187,6 +187,26 @@ class ProcurementConversionTest extends RealEstateScreenTestCase
         $this->assertNotNull(ReProcurement::find($otherProcurement->id));
     }
 
+    public function test_conversion_copies_every_lot(): void
+    {
+        $p = $this->landProcurement();
+        $this->procurementLot($p, ['lot_number' => 3, 'area_sqm' => 66.15, 'selling_price' => 19990000, 'status' => 'negotiating', 'notes' => '角地']);
+        $this->procurementLot($p, ['lot_number' => 1, 'area_sqm' => 100.00, 'selling_price' => 10000000, 'status' => 'on_sale', 'notes' => null]);
+        $this->procurementLot($p, ['lot_number' => 2, 'area_sqm' => 50.50, 'selling_price' => null, 'status' => 'sold', 'notes' => '南向き']);
+
+        $project = $this->converter()->convert($p, $this->manager());
+
+        $lots = ReProjectLot::where('project_id', $project->id)->orderBy('lot_number')->get();
+        $this->assertSame([1, 2, 3], $lots->pluck('lot_number')->map(fn ($n) => (int) $n)->all());
+        $this->assertSame(['100.00', '50.50', '66.15'], $lots->pluck('area_sqm')->all());
+        $this->assertSame(['30.25', '15.27', '20.01'], $lots->pluck('area_tsubo')->all());
+        $this->assertSame([10000000, null, 19990000], $lots->pluck('selling_price')->all());
+        $this->assertSame([330579, null, 999001], $lots->pluck('selling_price_per_tsubo')->all());
+        $this->assertSame([LotStatus::OnSale, LotStatus::Sold, LotStatus::Negotiating], $lots->pluck('status')->all());
+        $this->assertSame([null, '南向き', '角地'], $lots->pluck('notes')->all());
+        $this->assertSame(0, ReProcurementLot::where('procurement_id', $p->id)->count());
+    }
+
     public function test_a_land_without_prices_keeps_its_purchase_cost_row(): void
     {
         $p = $this->landProcurement(['assessment_price_land' => null, 'purchase_price_land' => null, 'target_selling_price_land' => null]);

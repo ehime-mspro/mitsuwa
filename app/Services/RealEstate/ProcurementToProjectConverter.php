@@ -115,9 +115,8 @@ class ProcurementToProjectConverter
                 ]);
             }
 
-            $lot = $locked->lot;
-            if ($lot !== null) {
-                // 坪数・坪単価は分譲地の区画の登録（ProjectController::storeLot）と同じ計算（丸めは 1 回だけ。Bug #33・#34）
+            // 区画は号地の順にすべて写す。坪数・坪単価は分譲地の区画の登録（ProjectController::storeLot）と同じ計算（丸めは 1 回だけ。Bug #33・#34）
+            foreach ($locked->lots as $lot) {
                 $tsubo = AreaConverter::sqmToTsubo((float) $lot->area_sqm);
                 ReProjectLot::create([
                     'project_id'              => $project->id,

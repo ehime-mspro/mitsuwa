@@ -68,8 +68,8 @@ class ProcurementListService
         $slice = $keys->forPage($page, $perPage);
 
         // 現在ページ分だけモデルを読む。costs は getExpectedProfit()、
-        // lots・lot は区画数が使うのでイーガーロード必須（無いと N+1）
-        $procs = ReProcurement::with('costs', 'lot')
+        // lots は区画数が使うのでイーガーロード必須（無いと N+1）
+        $procs = ReProcurement::with('costs', 'lots')
             ->whereIn('id', $slice->where('kind', ProcurementListRow::KIND_PROCUREMENT)->pluck('id'))
             ->get()
             ->keyBy('id');

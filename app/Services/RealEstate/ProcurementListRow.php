@@ -45,13 +45,13 @@ final class ProcurementListRow
     }
 
     /**
-     * ⚠ costs と lot をイーガーロードしたモデルを渡すこと（getExpectedProfit・区画数が使う）
+     * ⚠ costs と lots をイーガーロードしたモデルを渡すこと（getExpectedProfit・区画数が使う）
      */
     public static function fromProcurement(ReProcurement $p): self
     {
-        // 土地は区画が 0〜1 つ。区画が 0 でも区画のリンクは出す（詳細の区画の欄から登録するため）
+        // 土地は区画が何個でも。区画が 0 でも区画のリンクは出す（詳細の区画の欄から登録するため）
         $isLand = $p->property_type->isLandOnly();
-        $lot = $isLand ? $p->lot : null;
+        $lots = $isLand ? $p->lots : null;
 
         return new self(
             kind: self::KIND_PROCUREMENT,
@@ -68,8 +68,8 @@ final class ProcurementListRow
             address: $p->address,
             latitude: $p->latitude !== null ? (float) $p->latitude : null,
             longitude: $p->longitude !== null ? (float) $p->longitude : null,
-            soldLotCount: $isLand ? ($lot?->status === LotStatus::Sold ? 1 : 0) : null,
-            lotCount: $isLand ? ($lot !== null ? 1 : 0) : null,
+            soldLotCount: $isLand ? $lots->where('status', LotStatus::Sold)->count() : null,
+            lotCount: $isLand ? $lots->count() : null,
             showUrl: route('realestate.procurements.show', $p->id),
             lotsUrl: $isLand ? route('realestate.procurements.show', $p->id) . '#lot' : null,
         );

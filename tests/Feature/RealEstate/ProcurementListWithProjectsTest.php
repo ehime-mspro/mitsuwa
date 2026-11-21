@@ -8,6 +8,7 @@ use App\Enums\RealEstatePropertyType;
 use App\Enums\RealEstateTransactionType;
 use App\Enums\UserRole;
 use App\Models\ReProcurement;
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
@@ -119,6 +120,23 @@ class ProcurementListWithProjectsTest extends TestCase
         $this->assertNull($row->lotCount);
         $this->assertNull($row->lotsUrl);
         $this->assertStringContainsString("/realestate/procurements/{$p->id}", $row->showUrl);
+    }
+
+    public function test_the_list_counts_all_lots(): void
+    {
+        $p = $this->makeProcurement('PRC-LND', ['property_type' => RealEstatePropertyType::BrokerageLand->value]);
+        foreach ([[1, 'sold'], [2, 'sold'], [3, 'on_sale']] as [$no, $status]) {
+            ReProcurementLot::create(['procurement_id' => $p->id, 'lot_number' => $no, 'area_sqm' => 100, 'status' => $status]);
+        }
+
+        $row = ProcurementListRow::fromProcurement(ReProcurement::with('costs', 'lots')->findOrFail($p->id));
+
+        $this->assertSame(3, $row->lotCount);
+        $this->assertSame(2, $row->soldLotCount);
+
+        // 一覧の行（paginate）も同じ数を持つ
+        $listed = $this->paginateVia()->items();
+        $this->assertSame([3, 2], [$listed[0]->lotCount, $listed[0]->soldLotCount]);
     }
 
     public function test_row_from_project_maps_lot_counts(): void
