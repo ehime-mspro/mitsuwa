@@ -48,8 +48,27 @@
                             <option value="{{ $p->id }}" {{ old('procurement_id', $contract->procurement_id) == $p->id ? 'selected' : '' }}>{{ $p->procurement_code }} {{ $p->property_name }}</option>
                         @endforeach
                     </select>
-                    {{-- 選んだ案件が土地で区画があるときだけ出す（x-show に :style は併用しない） --}}
-                    <div class="fg-note" x-show="procurementLotLabel()" style="display: none;" x-text="'区画: ' + procurementLotLabel()"></div>
+                </div>
+
+                {{-- 土地の区画（選んだ土地に選べる区画があるときだけ出す。x-show の要素に :style は併用しない）。
+                     ⚠ HTML の required は付けない（区画の無い保存済みの契約＝#21 の形を、何も変えずに保存できるように。必須はサーバが決める。決めたこと 9）。
+                     ⚠ 選択肢は <template x-for> で描くので :selected を付ける（x-model の値が先に入る。Top trap #3）。一覧はサーバが最初から渡す --}}
+                <div x-show="hasLotOptions()" style="display: none;">
+                    <div class="fg" style="margin-bottom: 26px; max-width: 500px;">
+                        <label>区画 <span class="req">*</span></label>
+                        <select name="procurement_lot_id" x-model="procurementLotId" @change="onProcurementLotChange()"
+                                :disabled="!isProcurement() || !hasLotOptions()">
+                            <option value="">— 区画を選択 —</option>
+                            <template x-for="lot in lotOptions()" :key="lot.id">
+                                <option :value="lot.id" :selected="String(lot.id) === String(procurementLotId)" x-text="lot.label"></option>
+                            </template>
+                        </select>
+                        <div class="fg-note">※ ほかの契約・建売・注文住宅に紐づいていない区画を表示。選ぶと土地の契約額に区画の販売価格、原価に区画の分の原価が入ります</div>
+                        @if($legacyLotlessProcurementId !== '')
+                            {{-- 区画の無い保存済みの契約（#21 の形）: 区画を選ばずに保存できる（今の案件のままのときだけ出す） --}}
+                            <div class="fg-note" x-show="showsLegacyNotice()" style="display: none;">区画を選ばずに保存すると、今のまま（区画なし）で保存します。</div>
+                        @endif
+                    </div>
                 </div>
                 <input type="hidden" name="property_name" :value="propertyName">
                 <input type="hidden" name="address" :value="addressVal">
@@ -261,6 +280,8 @@
 function contractEditForm() {
     return {
         procurementId: {{ \Illuminate\Support\Js::from((string) old("procurement_id", $contract->procurement_id)) }},
+        procurementLotId: {{ \Illuminate\Support\Js::from((string) old("procurement_lot_id", $contract->procurement_lot_id)) }},
+        legacyLotlessProcurementId: {{ \Illuminate\Support\Js::from($legacyLotlessProcurementId) }},
         projectId: {{ \Illuminate\Support\Js::from((string) old("project_id", $contract->project_id)) }},
         lotId: {{ \Illuminate\Support\Js::from((string) old("lot_id", $contract->lot_id)) }},
         propertyName: @json(old('property_name', $contract->property_name)),
@@ -272,7 +293,7 @@ function contractEditForm() {
         amountBuildingIncl: '',
         taxAmount: {{ \Illuminate\Support\Js::from((string) old("tax_amount", $contract->tax_amount)) }},
         procurementLandOnly: @json($procurementLandOnly),
-        procurementLotLabels: @json($procurementLotLabels),
+        procurementLotOptions: @json($procurementLotOptions),
         costAmount: {{ \Illuminate\Support\Js::from((string) old("cost_amount", $contract->cost_amount)) }},
         grossProfit: null,
         profitRate: null,
@@ -284,8 +305,54 @@ function contractEditForm() {
                 || this.contractType === 'procurement_house';
         },
 
-        procurementLotLabel: function() {
-            return this.procurementLotLabels[String(this.procurementId)] || '';
+        // 土地の区画（仕入れ案件 id => 選べる区画。ラベル・販売価格・按分した原価。サーバが組んで渡す。決めたこと 8）
+        lotOptions: function() {
+            return this.procurementLotOptions[String(this.procurementId)] || [];
+        },
+
+        hasLotOptions: function() {
+            return this.lotOptions().length > 0;
+        },
+
+        selectedLot: function() {
+            var id = String(this.procurementLotId);
+            return this.lotOptions().find(function(l) { return String(l.id) === id; }) || null;
+        },
+
+        // 区画のある土地の原価: 選んだ区画の原価（按分した額）。区画を選んでいない・按分できないときは空
+        // （仕入れ案件の全額を入れると、区画の分でない原価で粗利を出してしまう。設計書 §5.5）
+        lotCostOrBlank: function() {
+            var lot = this.selectedLot();
+            return lot && lot.cost_amount !== null ? String(lot.cost_amount) : '';
+        },
+
+        // 区画を選んだら、土地の契約額に販売価格、原価に按分した原価を入れる（空の値は入れず、今の値のまま。決めたこと 1）
+        applyLot: function() {
+            var lot = this.selectedLot();
+            if (!lot) { return; }
+            if (lot.selling_price !== null) { this.amountLand = String(lot.selling_price); }
+            if (lot.cost_amount !== null) { this.costAmount = String(lot.cost_amount); }
+            this.calcProfit();
+        },
+
+        onProcurementLotChange: function() {
+            this.applyLot();
+        },
+
+        // 仕入れ案件を選んだら区画を選び直す（選べる区画が 1 つならそれを選んでおく。設計書 §5.3）。
+        // ⚠ 案件を選んだときだけ呼ぶ（編集画面を開いたときに、区画の無い保存済みの契約の区画を勝手に選ばない）
+        resetLot: function() {
+            this.procurementLotId = '';
+            var options = this.lotOptions();
+            if (options.length === 1) {
+                this.procurementLotId = String(options[0].id);
+                this.applyLot();
+            }
+        },
+
+        // 区画の無い保存済みの契約（#21 の形）の案内: 今の案件のままのときだけ
+        showsLegacyNotice: function() {
+            return this.legacyLotlessProcurementId !== '' && String(this.procurementId) === this.legacyLotlessProcurementId;
         },
 
         hasBuilding: function() {
@@ -371,13 +438,16 @@ function contractEditForm() {
 
         onProcurementChange: function() {
             var self = this;
+            self.resetLot();
             if (!self.procurementId) { self.propertyName = ''; self.addressVal = ''; self.costAmount = ''; self.calcProfit(); return; }
             // ⚠ X-Requested-With が無いと Laravel がこの GET を通常の画面遷移とみなし、
             //    セッションの直前 URL をこの JSON エンドポイントで上書きしてしまう
             //    （バリデーションエラー時の back() がフォームに戻らなくなる）。
             fetch('{{ url("/api/realestate/procurement-cost") }}/' + self.procurementId, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { if (!r.ok) { return ajaxGetFailure(r, '仕入れ案件の原価を取得', '仕入れ案件の原価の取得に失敗しました（' + r.status + '）').then(function (message) { alert(message); return null; }); } return r.json(); })
-                .then(function(data) { if (!data) return; self.propertyName = data.property_name; self.addressVal = data.address || ''; self.costAmount = data.cost_amount; self.calcProfit(); });
+                .then(function(data) { if (!data) return; self.propertyName = data.property_name; self.addressVal = data.address || '';
+                    // 区画のある土地は、選んだ区画の原価を入れ直す（応答は区画を選んだあとで返ることがある）
+                    self.costAmount = self.hasLotOptions() ? self.lotCostOrBlank() : data.cost_amount; self.calcProfit(); });
         },
 
         onProjectChange: function() {

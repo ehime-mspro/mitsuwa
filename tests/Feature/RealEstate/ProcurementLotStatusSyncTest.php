@@ -17,11 +17,13 @@ use Tests\Feature\RealEstate\Screens\RealEstateScreenTestCase;
  */
 class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
 {
-    private function contractPayload(int $procurementId, string $name = '勝山の土地'): array
+    /** 区画のある土地の契約は区画を選ぶ（区画が 1 つの土地も同じ。設計書 §5.3） */
+    private function contractPayload(int $procurementId, ?ReProcurementLot $lot = null, string $name = '勝山の土地'): array
     {
         return [
             'contract_type' => 'procurement_land',
             'procurement_id' => $procurementId,
+            'procurement_lot_id' => $lot?->id,
             'contract_date' => '2026-07-21',
             'buyer_id' => $this->buyer()->id,
             'contract_amount_land' => 30000000,
@@ -40,7 +42,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $procurement = $this->landProcurement();
         $lot = $this->procurementLot($procurement);
 
-        $this->actingAs($this->user)->post('/realestate/contracts', $this->contractPayload($procurement->id))
+        $this->actingAs($this->user)->post('/realestate/contracts', $this->contractPayload($procurement->id, $lot))
             ->assertSessionHasNoErrors();
         $this->assertSame(LotStatus::Sold, $this->lotStatus($lot));
 
@@ -49,6 +51,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $this->assertSame(LotStatus::OnSale, $this->lotStatus($lot));
     }
 
+    /** 契約の区画を別の土地の区画へ付け替えると、旧の区画が販売中・新の区画が成約になる */
     public function test_switching_the_contracts_procurement_moves_sold(): void
     {
         $a = $this->landProcurement(['procurement_code' => 'RE-PRC-001']);
@@ -56,13 +59,14 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $lotA = $this->procurementLot($a);
         $lotB = $this->procurementLot($b);
 
-        $this->actingAs($this->user)->post('/realestate/contracts', $this->contractPayload($a->id))
+        $this->actingAs($this->user)->post('/realestate/contracts', $this->contractPayload($a->id, $lotA))
             ->assertSessionHasNoErrors();
         $this->assertSame(LotStatus::Sold, $this->lotStatus($lotA));
 
         $contract = ReContract::firstOrFail();
-        $this->actingAs($this->user)->put("/realestate/contracts/{$contract->id}", $this->contractPayload($b->id, '別の土地'))
+        $this->actingAs($this->user)->put("/realestate/contracts/{$contract->id}", $this->contractPayload($b->id, $lotB, '別の土地'))
             ->assertSessionHasNoErrors();
+        $this->assertSame($lotB->id, $contract->fresh()->procurement_lot_id);
 
         $this->assertSame(LotStatus::OnSale, $this->lotStatus($lotA));
         $this->assertSame(LotStatus::Sold, $this->lotStatus($lotB));

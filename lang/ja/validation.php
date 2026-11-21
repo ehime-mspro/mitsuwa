@@ -444,6 +444,7 @@ return [
         // 不動産の契約（ReContractController::validateContract()。規則を変数で組むので、2026-10-07 まで走査に見えず和名が無かった。Bug #110）
         'contract_type' => '契約種別',
         'procurement_id' => '仕入れ案件',
+        'procurement_lot_id' => '区画',
         'lot_id' => '区画',
         'cost_amount' => '原価',
         'brokerage_selling_price' => '販売金額',

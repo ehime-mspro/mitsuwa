@@ -52,6 +52,7 @@ class LandLotDisplayTest extends RealEstateScreenTestCase
         $this->assertSame(2, substr_count($html, 'data-lot-count'));
     }
 
+    /** 契約の登録画面: 選んだ土地の区画を区画の選択欄に出す（区画の無い土地では欄ごと隠れている） */
     public function test_the_contract_registration_shows_the_lot_of_the_chosen_land(): void
     {
         $withLot = $this->landProcurement();
@@ -59,30 +60,35 @@ class LandLotDisplayTest extends RealEstateScreenTestCase
         $noLot = $this->landProcurement(['procurement_code' => 'RE-PRC-002', 'property_name' => '区画なしの土地']);
         $html = $this->htmlOf(route('realestate.contracts.create'));
 
-        $run = $this->driveAlpine($html, 'contractForm', 'contractForm()', "data.procurementId = '{$withLot->id}';", evaluate: ['data.procurementLotLabel()']);
-        $this->assertSame([self::LOT_LABEL], $run['evaluated']);
+        $run = $this->driveAlpine($html, 'contractForm', 'contractForm()', "data.procurementId = '{$withLot->id}';", evaluate: ['data.lotOptions().map(function (o) { return o.label; })']);
+        $this->assertSame([[self::LOT_LABEL . ' 販売中']], $run['evaluated']);
 
-        $run = $this->driveAlpine($html, 'contractForm', 'contractForm()', "data.procurementId = '{$noLot->id}';", evaluate: ['data.procurementLotLabel()']);
-        $this->assertSame([''], $run['evaluated']);
-        $this->assertSame(1, preg_match('/<div[^>]*x-show="procurementLotLabel\(\)"[^>]*style="display: none;"/u', $html), '区画の行が最初から隠れていない');
+        $run = $this->driveAlpine($html, 'contractForm', 'contractForm()', "data.procurementId = '{$noLot->id}';", evaluate: ['data.hasLotOptions()']);
+        $this->assertSame([false], $run['evaluated']);
+        $this->assertSame(1, preg_match('/<div[^>]*x-show="hasLotOptions\(\)"[^>]*style="display: none;"/u', $html), '区画の欄が最初から隠れていない');
     }
 
+    /** 契約の編集・詳細は契約の区画を出す（仕入れ案件の区画ではない。区画の無い契約は区画を出さない） */
     public function test_the_contract_edit_and_detail_show_the_lot(): void
     {
         $land = $this->landProcurement();
-        $this->procurementLot($land);
+        $lot = $this->procurementLot($land);
         $contract = ReContract::create([
             'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted', 'contract_date' => '2026-09-01',
-            'property_name' => '勝山の土地', 'procurement_id' => $land->id, 'buyer_id' => $this->buyer()->id,
+            'property_name' => '勝山の土地', 'procurement_id' => $land->id, 'procurement_lot_id' => $lot->id, 'buyer_id' => $this->buyer()->id,
             'contract_amount_land' => 25000000, 'cost_amount' => 20000000, 'created_by' => $this->user->id,
         ]);
 
         $edit = $this->htmlOf(route('realestate.contracts.edit', $contract));
-        $run = $this->driveAlpine($edit, 'contractEditForm', 'contractEditForm()', '', evaluate: ['data.procurementLotLabel()']);
-        $this->assertSame([self::LOT_LABEL], $run['evaluated']);
+        $run = $this->driveAlpine($edit, 'contractEditForm', 'contractEditForm()', '', evaluate: ['data.procurementLotId', 'data.lotOptions().map(function (o) { return o.label; })']);
+        $this->assertSame([(string) $lot->id, [self::LOT_LABEL . ' 販売中']], $run['evaluated']);
 
         $show = $this->htmlOf(route('realestate.contracts.show', $contract));
         $this->assertStringContainsString('区画 ' . self::LOT_LABEL, $show);
+
+        // 区画のある土地でも、区画の無い契約（#21 の形）は区画を出さない
+        $contract->update(['procurement_lot_id' => null]);
+        $this->assertStringNotContainsString('区画 ' . self::LOT_LABEL, $this->htmlOf(route('realestate.contracts.show', $contract)));
     }
 
     public function test_the_housing_screens_show_the_lot_area_of_the_land(): void

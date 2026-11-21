@@ -16,8 +16,11 @@ use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Models\User;
 use App\Support\JapanTime;
+use App\Support\ProcurementLotClaims;
 use App\Support\Settings;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 class ReContractController extends Controller
@@ -117,17 +120,12 @@ class ReContractController extends Controller
      */
     public function create(Request $request)
     {
-        // 販売中で、まだ契約の無い仕入れ案件（契約のある案件が販売中に戻っていても、2 件目の契約を作らせない。Bug #139）
-        $procurements = ReProcurement::with('lot')
-            ->where('status', ProcurementStatus::Selling->value)
-            ->whereDoesntHave('contracts')
-            ->orderBy('procurement_code')
-            ->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
+        // 販売中で、契約の無い案件と、空いている区画のある土地（契約のある案件が販売中に戻っていても、2 件目の契約を作らせない。Bug #139）
+        [$procurements, $procurementLotOptions] = $this->procurementChoices(null);
 
         // 建物欄を出すかは「紐づく仕入れ案件の物件種別」で決まる（設計書 §4.2）。
         // ⚠ Blade で多行配列を @@json に渡すと壊れるので、必ずここで組んで単一変数で渡す（Bug #26）
         $procurementLandOnly = $this->landOnlyMap($procurements);
-        $procurementLotLabels = $this->lotLabelMap($procurements);
 
         // 販売中の分譲地
         $projects = ReProject::where('status', ProjectStatus::Selling->value)
@@ -147,7 +145,7 @@ class ReContractController extends Controller
         $lots = $this->lotOptions(old('project_id'));
 
         return view('realestate.contracts.create', compact(
-            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotLabels', 'lots'
+            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotOptions', 'lots'
         ));
     }
 
@@ -187,15 +185,14 @@ class ReContractController extends Controller
             ReProject::find($contract->project_id)?->syncStatusFromLots();
         }
 
-        // 仕入れ案件の場合、案件ステータスを販売済に変更
-        // クエリビルダ更新（区画側と同形）: ID しか無いのでモデルを読まずに 1 発で更新する。
-        // updated_at は Builder::update() が自動付与するが、モデルイベントを通らないため
-        // updated_by は据え置きになる点に注意。
+        // 仕入れ案件の場合: 区画を選んだ契約はその区画を成約にして仕入れ案件を区画から集約し、
+        // 区画の無い案件は今どおり販売済にする（設計書 §5.4）
         if ($contractType->isProcurement() && $contract->procurement_id) {
-            ReProcurement::where('id', $contract->procurement_id)
-                ->update(['status' => ProcurementStatus::Sold->value]);
-            // 土地の区画も成約に（区画が無ければ何もしない）
-            ReProcurementLot::markSoldFor((int) $contract->procurement_id);
+            if ($contract->procurement_lot_id) {
+                ReProcurementLot::markSold((int) $contract->procurement_lot_id);
+            } else {
+                $this->settleProcurement((int) $contract->procurement_id, true);
+            }
         }
 
         if ($contractType->isBrokerage()) {
@@ -214,7 +211,7 @@ class ReContractController extends Controller
      */
     public function show(ReContract $contract)
     {
-        $contract->load(['procurement.costs', 'procurement.lot', 'project.costs', 'project.lots', 'lot', 'buyer', 'staff', 'createdBy', 'updatedBy']);
+        $contract->load(['procurement.costs', 'procurement.lots', 'procurementLot', 'project.costs', 'project.lots', 'lot', 'buyer', 'staff', 'createdBy', 'updatedBy']);
 
         // 原価内訳（仕入れ系）
         $costBreakdown = null;
@@ -257,7 +254,12 @@ class ReContractController extends Controller
         // 内訳 26,700,000 円に対し合計 25,095,455 円と表示されていた）。
         // 乖離はここで 1 度だけ算出し、Blade は表示に徹する（Bug #26: 配列は Controller で組む）。
         $liveCost = null;
-        if ($costBreakdown !== null) {
+        $lotAllocation = $costBreakdown !== null ? $this->lotAllocation($contract) : null;
+        if ($lotAllocation !== null) {
+            // 区画が 2 つ以上の土地の区画の契約は、按分した額と比べる（全額と比べると、按分して保存した契約の全部に警告が出る。設計書 §5.6）。
+            // 按分できない（販売価格の欠け）ときは比べない（null）
+            $liveCost = $lotAllocation['amount'];
+        } elseif ($costBreakdown !== null) {
             $liveCost = (int) $costBreakdown['costs']->sum('amount');
         } elseif ($subdivisionCostInfo !== null) {
             $liveCost = (int) $subdivisionCostInfo['per_lot_cost'];
@@ -272,7 +274,7 @@ class ReContractController extends Controller
         }
 
         return view('realestate.contracts.show', compact(
-            'contract', 'costBreakdown', 'subdivisionCostInfo', 'liveCost', 'costDivergence'
+            'contract', 'costBreakdown', 'subdivisionCostInfo', 'lotAllocation', 'liveCost', 'costDivergence'
         ));
     }
 
@@ -283,16 +285,17 @@ class ReContractController extends Controller
     {
         $contract->load(['procurement', 'project', 'lot', 'buyer', 'staff']);
 
-        // 販売中で、まだ契約の無い仕入れ案件（+ 現在選択中の案件も含む。Bug #139）
-        $procurements = ReProcurement::with('lot')->where(function ($q) use ($contract) {
-            $q->where(fn ($free) => $free->where('status', ProcurementStatus::Selling->value)->whereDoesntHave('contracts'));
-            if ($contract->procurement_id) {
-                $q->orWhere('id', $contract->procurement_id);
-            }
-        })->orderBy('procurement_code')->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
+        // 販売中で、契約の無い案件と、空いている区画のある土地（+ 現在選択中の案件も含む。Bug #139）。
+        // 区画の選択肢は取られていない区画と、この契約の区画
+        [$procurements, $procurementLotOptions] = $this->procurementChoices($contract);
 
         $procurementLandOnly = $this->landOnlyMap($procurements);
-        $procurementLotLabels = $this->lotLabelMap($procurements);
+
+        // 区画の無い保存済みの契約（#21 の形）が、区画のある土地に付いている → 区画を選ばずにそのまま保存できると案内する（決めたこと 9）
+        $currentProcurement = $procurements->firstWhere('id', $contract->procurement_id);
+        $legacyLotlessProcurementId = $contract->procurement_lot_id === null && $currentProcurement !== null && $currentProcurement->lots->isNotEmpty()
+            ? (string) $contract->procurement_id
+            : '';
 
         // 販売中のPJ（+ 現在選択中も含む）
         $projects = ReProject::where(function ($q) use ($contract) {
@@ -319,7 +322,8 @@ class ReContractController extends Controller
         $staffUsers = User::assignableWith($contract->staff_user_id);
 
         return view('realestate.contracts.edit', compact(
-            'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotLabels'
+            'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotOptions',
+            'legacyLotlessProcurementId'
         ));
     }
 
@@ -358,24 +362,31 @@ class ReContractController extends Controller
             }
         }
 
-        // 仕入れ案件: 案件変更の場合、旧案件を販売中に戻して新案件を販売済に
-        // （$contract->update() の前に置くこと。procurement_id が旧値である必要がある）
-        if ($contractType->isProcurement()) {
-            $oldProcurementId = $contract->procurement_id;
-            $newProcurementId = $validated['procurement_id'] ?? null;
-            if ($oldProcurementId && $oldProcurementId != $newProcurementId) {
-                ReProcurement::where('id', $oldProcurementId)
-                    ->update(['status' => ProcurementStatus::Selling->value]);
-                ReProcurementLot::markOnSaleFor((int) $oldProcurementId);
-            }
-            if ($newProcurementId && $newProcurementId != $oldProcurementId) {
-                ReProcurement::where('id', $newProcurementId)
-                    ->update(['status' => ProcurementStatus::Sold->value]);
-                ReProcurementLot::markSoldFor((int) $newProcurementId);
-            }
-        }
+        // 仕入れ案件: 旧の案件・区画を保存の前に控える（保存したあとは新しい値になる）
+        $oldProcurementId = $contract->procurement_id ? (int) $contract->procurement_id : null;
+        $oldLotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
 
         $contract->update($validated);
+
+        // 仕入れ案件: 区画を付け替えたら旧の区画を販売中・新の区画を成約にし（仕入れ案件は区画から集約）、
+        // 区画の無い紐付けの案件を替えたら、旧の案件を販売中・新の案件を販売済にする（区画の無い案件は今どおり。設計書 §5.4）
+        if ($contractType->isProcurement()) {
+            $newProcurementId = $contract->procurement_id ? (int) $contract->procurement_id : null;
+            $newLotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
+
+            if ($oldLotId !== $newLotId) {
+                ReProcurementLot::markOnSale($oldLotId);
+                ReProcurementLot::markSold($newLotId);
+            }
+            if ($oldProcurementId !== $newProcurementId) {
+                if ($oldProcurementId !== null && $oldLotId === null) {
+                    $this->settleProcurement($oldProcurementId, false);
+                }
+                if ($newProcurementId !== null && $newLotId === null) {
+                    $this->settleProcurement($newProcurementId, true);
+                }
+            }
+        }
 
         return redirect()
             ->route('realestate.contracts.show', $contract)
@@ -393,16 +404,22 @@ class ReContractController extends Controller
             ReProject::find($contract->project_id)?->syncStatusFromLots();
         }
 
-        // 仕入れ案件の場合、案件ステータスを販売中に戻す
-        // （1 仕入れ案件 = 1 契約 の前提のため、他契約の有無は確認しない。区画側も同様）
-        if ($contract->contract_type->isProcurement() && $contract->procurement_id) {
-            ReProcurement::where('id', $contract->procurement_id)
-                ->update(['status' => ProcurementStatus::Selling->value]);
-            ReProcurementLot::markOnSaleFor((int) $contract->procurement_id);
-        }
+        $procurementId = $contract->contract_type->isProcurement() && $contract->procurement_id ? (int) $contract->procurement_id : null;
+        $lotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
 
         $name = $contract->property_name;
         $contract->delete();
+
+        // 仕入れ案件の場合: 区画の契約はその区画を販売中に戻して仕入れ案件を区画から集約し、
+        // 区画の無い契約は今どおり販売中に戻す（区画のある土地の区画の無い契約＝#21 は、区画を動かさず集約するだけ）。
+        // 区画の無い案件は 1 仕入れ案件 = 1 契約の前提のため、他契約の有無は確認しない
+        if ($procurementId !== null) {
+            if ($lotId !== null) {
+                ReProcurementLot::markOnSale($lotId);
+            } else {
+                $this->settleProcurement($procurementId, false);
+            }
+        }
 
         return redirect()->route('realestate.contracts.index')
             ->with('success', "契約「{$name}」を削除しました。");
@@ -567,21 +584,96 @@ class ReContractController extends Controller
     }
 
     /**
-     * 仕入れ案件 id => 区画の 1 行の説明（summaryLabel）のマップ。区画の無い案件は載せない。
-     * Alpine が選んだ案件の区画を出すのに使う（landOnlyMap() と同じく fetch を介さない）。
+     * 契約の画面の仕入れ案件の選択肢と、区画の選択肢（決めたこと 8。API を足さず、サーバが最初から渡す。Top trap #3）。
      *
-     * @param  \Illuminate\Support\Collection<int, ReProcurement>  $procurements  lot をイーガーロードしたもの
-     * @return array<string, string>
+     * 仕入れ案件: 販売中で「区画が無く契約も無い案件」と「取られていない区画のある土地」（$current は今の案件も）。
+     * 区画: 仕入れ案件 id => 取られていない区画と $current の区画（号地の順）。ラベル・販売価格・按分した原価（landCostForLot()）を持つ。
+     *
+     * ⚠ 取られているかは紐付けで決める（ProcurementLotClaims。区画のステータスでは決めない）。
+     * ⚠ 区画のある土地ごとに selectableLots() を呼ぶと 1 件 5 問い合わせになるので、区画と原価をまとめて読み、
+     *   取られている区画は takenLotIds() を 1 回だけ引いて PHP で外す。
+     *
+     * @return array{0: Collection<int, ReProcurement>, 1: array<string, list<array{id: int, label: string, selling_price: ?int, cost_amount: ?int}>>}
      */
-    private function lotLabelMap($procurements): array
+    private function procurementChoices(?ReContract $current): array
     {
-        $map = [];
-        foreach ($procurements as $p) {
-            if ($p->lot !== null) {
-                $map[(string) $p->id] = $p->lot->summaryLabel();
+        $candidates = ReProcurement::with(['lots', 'costs'])
+            ->where(function ($q) use ($current) {
+                $q->where(fn ($selling) => $selling
+                    ->where('status', ProcurementStatus::Selling->value)
+                    ->where(fn ($free) => $free->has('lots')->orWhereDoesntHave('contracts')));
+                if ($current?->procurement_id) {
+                    $q->orWhere('id', $current->procurement_id);
+                }
+            })
+            ->orderBy('procurement_code')
+            ->get(['id', 'procurement_code', 'property_name', 'address', 'property_type']);
+
+        $lotted = $candidates->filter(fn (ReProcurement $p) => $p->lots->isNotEmpty());
+        $taken = ProcurementLotClaims::takenLotIds($lotted->pluck('id')->all(), $current);
+
+        $options = [];
+        foreach ($lotted as $p) {
+            $free = $p->lots->reject(fn (ReProcurementLot $lot) => in_array((int) $lot->id, $taken, true));
+            if ($free->isEmpty()) {
+                continue;
             }
+            $options[(string) $p->id] = $free->map(fn (ReProcurementLot $lot) => [
+                'id'            => (int) $lot->id,
+                'label'         => $lot->optionLabel(),
+                'selling_price' => $lot->selling_price,
+                'cost_amount'   => $p->landCostForLot((int) $lot->id),
+            ])->values()->all();
         }
-        return $map;
+
+        // 全区画が取られた土地は出さない（今の案件は、選べる区画が無くても選んだままにできるように残す）
+        $procurements = $candidates
+            ->reject(fn (ReProcurement $p) => $p->lots->isNotEmpty()
+                && ! isset($options[(string) $p->id])
+                && (int) $p->id !== (int) $current?->procurement_id)
+            ->values();
+
+        return [$procurements, $options];
+    }
+
+    /**
+     * 契約の詳細の按分の行（設計書 §5.6）。区画が 2 つ以上の土地の区画の契約だけ（それ以外は null＝今どおり全額と比べる）。
+     * amount は按分した額（按分できないときは null）。
+     *
+     * @return array{lot_price: ?int, price_total: int, amount: ?int}|null
+     */
+    private function lotAllocation(ReContract $contract): ?array
+    {
+        $procurement = $contract->procurement;
+        $lot = $contract->procurementLot;
+        if ($procurement === null || $lot === null
+            || $procurement->lots->count() < 2
+            || ! $procurement->lots->contains('id', $lot->id)) {
+            return null;
+        }
+
+        return [
+            'lot_price'   => $lot->selling_price,
+            'price_total' => $procurement->getLotSellingPriceTotal(),
+            'amount'      => $procurement->landCostForLot((int) $lot->id),
+        ];
+    }
+
+    /**
+     * 区画を選んでいない契約の仕入れ案件のステータス（設計書 §5.4）。
+     * 区画の無い案件は今どおり販売済（$sold）／販売中にし、区画のある土地（#21 の形の区画の無い契約）は区画から集約するだけ。
+     * 区画の無い案件の更新はクエリビルダ（モデルを読まずに 1 発で更新する。モデルイベントを通らないので updated_by は据え置き）。
+     */
+    private function settleProcurement(int $procurementId, bool $sold): void
+    {
+        if (ReProcurementLot::where('procurement_id', $procurementId)->exists()) {
+            ReProcurement::find($procurementId)?->syncStatusFromLots();
+
+            return;
+        }
+
+        ReProcurement::where('id', $procurementId)
+            ->update(['status' => ($sold ? ProcurementStatus::Sold : ProcurementStatus::Selling)->value]);
     }
 
     /**
@@ -605,8 +697,24 @@ class ReContractController extends Controller
         ];
 
         if ($contractType->isProcurement()) {
-            // 同じ仕入れ案件に 2 件目の契約を作らせない（古い画面・二度押しの 2 回目。更新は自分の契約を除く。Bug #139）
-            $rules['procurement_id']  = ['required', 'exists:re_procurements,id', Rule::unique('re_contracts', 'procurement_id')->ignore($current?->id)];
+            // 区画の決まりは「選んだ仕入れ案件に区画があるか」で決める（契約種別では決めない。決めたこと 3）。
+            // ⚠ 入力チェックの前に読むので、数字の文字か整数のときだけ使う（配列などは 0＝区画の無い案件として扱い、入力チェックが断る。Bug #121）
+            $chosen = $request->input('procurement_id');
+            $chosenId = is_int($chosen) || (is_string($chosen) && $chosen !== '' && ctype_digit($chosen)) ? (int) $chosen : 0;
+            $hasLots = $chosenId > 0 && ReProcurementLot::where('procurement_id', $chosenId)->exists();
+
+            // 区画の無い案件: 同じ仕入れ案件に 2 件目の契約を作らせない（古い画面・二度押しの 2 回目。更新は自分の契約を除く。Bug #139）。
+            // 区画のある土地は、その代わりに「1 区画 1 件」で断る（下の after。設計書 §5.3）
+            $rules['procurement_id']  = $hasLots
+                ? ['required', 'exists:re_procurements,id']
+                : ['required', 'exists:re_procurements,id', Rule::unique('re_contracts', 'procurement_id')->ignore($current?->id)];
+            // 区画は選んだ案件の区画だけ（exists の 3・4 番目＝procurement_id がその案件。別の土地の区画・無い区画は断る）。
+            // 区画のある土地では必須（区画の無い保存済みの契約＝#21 の形は、同じ案件のままなら選ばずに保存できる。requiresLot()）。
+            // ⚠ 整数の上限の走査（AmountLimitTest）は文字列の規則を 1 つずつ読むので、integer と exists を同じ文字列に置く
+            //   （配列の中の文字列は | で分けられないので、規則は 1 本の文字列で書く）
+            $lotRequired = ProcurementLotClaims::requiresLot($chosen, $current);
+            $rules['procurement_lot_id'] = ($lotRequired ? 'required' : 'nullable')
+                . '|integer|exists:re_procurement_lots,id,procurement_id,' . $chosenId;
             $rules['contract_date']   = 'required|date';
             $rules['buyer_id']        = 'required|exists:buyers,id';
             $rules['contract_amount_land']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
@@ -636,6 +744,7 @@ class ReContractController extends Controller
         // （規則が無いと形を見られず、手で組んだ配列が残って編集画面の JS が 500 になる。Bug #121）
         $rules += [
             'procurement_id'           => 'exclude',
+            'procurement_lot_id'       => 'exclude',
             'project_id'               => 'exclude',
             'lot_id'                   => 'exclude',
             'contract_date'            => 'exclude',
@@ -649,10 +758,28 @@ class ReContractController extends Controller
             'brokerage_fee'            => 'exclude',
         ];
 
-        // 画面のラベルは「所在地」（全体の和名は「住所」）。第 2 引数は messages（Bug #37）
-        $validated = $request->validate($rules, [
-            'procurement_id.unique' => 'この仕入れ案件にはすでに契約があります。契約の一覧で確かめてください。',
-        ], ['address' => '所在地']);
+        // 画面のラベルは「所在地」（全体の和名は「住所」）。第 3 引数は messages・第 4 引数が和名（Bug #37）。
+        // 1 回の入力チェックで、区画が取られている断りもほかの誤りと一緒に出す（Bug #112）
+        $validated = Validator::make($request->all(), $rules, [
+            'procurement_id.unique'       => 'この仕入れ案件にはすでに契約があります。契約の一覧で確かめてください。',
+            'procurement_lot_id.required' => '区画を選んでください。',
+        ], ['address' => '所在地'])->after(function ($validator) use ($request, $contractType, $current) {
+            // 1 つの区画に付けられる契約・建売・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。区画や案件にほかの誤りがあれば見ない
+            if (! $contractType->isProcurement()
+                || $validator->errors()->has('procurement_lot_id')
+                || $validator->errors()->has('procurement_id')) {
+                return;
+            }
+            $refusal = ProcurementLotClaims::refusal($request->input('procurement_lot_id'), $current, true);
+            if ($refusal !== null) {
+                $validator->errors()->add('procurement_lot_id', $refusal);
+            }
+        })->validate();
+
+        // 区画の欄が送られない（区画の無い土地では選択欄が隠れて送られない）ときも、前の区画を残さない（validated() は送られないキーを含めない。Bug #38）
+        if ($contractType->isProcurement()) {
+            $validated['procurement_lot_id'] = isset($validated['procurement_lot_id']) ? (int) $validated['procurement_lot_id'] : null;
+        }
 
         // tax_rate は NOT NULL DEFAULT 10.00。欄を持たない種別でも必ず値を入れる
         $validated['tax_rate'] = $validated['tax_rate'] ?? Settings::taxRate();

@@ -58,9 +58,24 @@
                             <option value="{{ $p->id }}">{{ $p->procurement_code }} {{ $p->property_name }}</option>
                         @endforeach
                     </select>
-                    <div class="fg-note">※ ステータスが「販売中」で、まだ契約の無い案件のみ表示</div>
-                    {{-- 選んだ案件が土地で区画があるときだけ出す（x-show に :style は併用しない） --}}
-                    <div class="fg-note" x-show="procurementLotLabel()" style="display: none;" x-text="'区画: ' + procurementLotLabel()"></div>
+                    <div class="fg-note">※ ステータスが「販売中」で、契約の無い案件と、空いている区画のある土地を表示</div>
+                </div>
+
+                {{-- 土地の区画（選んだ土地に選べる区画があるときだけ出す。x-show の要素に :style は併用しない）。
+                     ⚠ HTML の required は付けない（区画の無い保存済みの契約＝#21 の形を、何も変えずに保存できるように。必須はサーバが決める。決めたこと 9）。
+                     ⚠ 選択肢は <template x-for> で描くので :selected を付ける（x-model の値が先に入る。Top trap #3）。一覧はサーバが最初から渡す --}}
+                <div x-show="hasLotOptions()" style="display: none;">
+                    <div class="fg" style="margin-bottom: 26px; max-width: 500px;">
+                        <label>区画 <span class="req">*</span></label>
+                        <select name="procurement_lot_id" x-model="procurementLotId" @change="onProcurementLotChange()"
+                                :disabled="!isProcurement() || !hasLotOptions()">
+                            <option value="">— 区画を選択 —</option>
+                            <template x-for="lot in lotOptions()" :key="lot.id">
+                                <option :value="lot.id" :selected="String(lot.id) === String(procurementLotId)" x-text="lot.label"></option>
+                            </template>
+                        </select>
+                        <div class="fg-note">※ ほかの契約・建売・注文住宅に紐づいていない区画を表示。選ぶと土地の契約額に区画の販売価格、原価に区画の分の原価が入ります</div>
+                    </div>
                 </div>
 
                 {{-- 原価内訳ボックス --}}
@@ -421,6 +436,7 @@ function contractForm() {
     return {
         contractType: {{ \Illuminate\Support\Js::from((string) old("contract_type", "")) }},
         procurementId: {{ \Illuminate\Support\Js::from((string) old("procurement_id", "")) }},
+        procurementLotId: {{ \Illuminate\Support\Js::from((string) old("procurement_lot_id", "")) }},
         projectId: {{ \Illuminate\Support\Js::from((string) old("project_id", "")) }},
         lotId: {{ \Illuminate\Support\Js::from((string) old("lot_id", "")) }},
         propertyName: @json(old('property_name', '')),
@@ -431,7 +447,7 @@ function contractForm() {
         amountBuildingIncl: '',
         taxAmount: {{ \Illuminate\Support\Js::from((string) old("tax_amount", "")) }},
         procurementLandOnly: @json($procurementLandOnly),
-        procurementLotLabels: @json($procurementLotLabels),
+        procurementLotOptions: @json($procurementLotOptions),
         costAmount: {{ \Illuminate\Support\Js::from((string) old("cost_amount", "")) }},
         grossProfit: null,
         profitRate: null,
@@ -452,12 +468,53 @@ function contractForm() {
             return this.contractType === 'brokerage';
         },
 
-        // 建物欄を出すかは紐づく仕入れ案件の物件種別で決まる（設計書 §4.2）。
-        // 描画時に渡されたマップを見るので、バリデーションエラーで差し戻された直後も正しく開く。
-        procurementLotLabel: function() {
-            return this.procurementLotLabels[String(this.procurementId)] || '';
+        // 土地の区画（仕入れ案件 id => 選べる区画。ラベル・販売価格・按分した原価。サーバが組んで渡す。決めたこと 8）
+        lotOptions: function() {
+            return this.procurementLotOptions[String(this.procurementId)] || [];
         },
 
+        hasLotOptions: function() {
+            return this.lotOptions().length > 0;
+        },
+
+        selectedLot: function() {
+            var id = String(this.procurementLotId);
+            return this.lotOptions().find(function(l) { return String(l.id) === id; }) || null;
+        },
+
+        // 区画のある土地の原価: 選んだ区画の原価（按分した額）。区画を選んでいない・按分できないときは空
+        // （仕入れ案件の全額を入れると、区画の分でない原価で粗利を出してしまう。設計書 §5.5）
+        lotCostOrBlank: function() {
+            var lot = this.selectedLot();
+            return lot && lot.cost_amount !== null ? String(lot.cost_amount) : '';
+        },
+
+        // 区画を選んだら、土地の契約額に販売価格、原価に按分した原価を入れる（空の値は入れず、今の値のまま。決めたこと 1）
+        applyLot: function() {
+            var lot = this.selectedLot();
+            if (!lot) { return; }
+            if (lot.selling_price !== null) { this.amountLand = String(lot.selling_price); }
+            if (lot.cost_amount !== null) { this.costAmount = String(lot.cost_amount); }
+            this.calcProfit();
+        },
+
+        onProcurementLotChange: function() {
+            this.applyLot();
+        },
+
+        // 仕入れ案件を選んだら区画を選び直す（選べる区画が 1 つならそれを選んでおく。設計書 §5.3）。
+        // ⚠ 案件を選んだときだけ呼ぶ（編集画面を開いたときに、区画の無い保存済みの契約の区画を勝手に選ばない）
+        resetLot: function() {
+            this.procurementLotId = '';
+            var options = this.lotOptions();
+            if (options.length === 1) {
+                this.procurementLotId = String(options[0].id);
+                this.applyLot();
+            }
+        },
+
+        // 建物欄を出すかは紐づく仕入れ案件の物件種別で決まる（設計書 §4.2）。
+        // 描画時に渡されたマップを見るので、バリデーションエラーで差し戻された直後も正しく開く。
         hasBuilding: function() {
             if (!this.isProcurement() || !this.procurementId) { return false; }
             return this.procurementLandOnly[String(this.procurementId)] === false;
@@ -535,6 +592,7 @@ function contractForm() {
 
         onTypeChange: function() {
             this.procurementId = '';
+            this.procurementLotId = '';
             this.projectId = '';
             this.lotId = '';
             this.propertyName = '';
@@ -553,6 +611,7 @@ function contractForm() {
 
         onProcurementChange: function() {
             var self = this;
+            self.resetLot();
             if (!self.procurementId) {
                 self.procCost = null;
                 self.propertyName = '';
@@ -575,7 +634,8 @@ function contractForm() {
                     self.procCost = data;
                     self.propertyName = data.property_name;
                     self.addressVal = data.address || '';
-                    self.costAmount = data.cost_amount;
+                    // 区画のある土地は、選んだ区画の原価を入れ直す（応答は区画を選んだあとで返ることがある）
+                    self.costAmount = self.hasLotOptions() ? self.lotCostOrBlank() : data.cost_amount;
                     // 土地に切り替えたら建物側の入力を捨てる(disabled で送信もされない)
                     if (!self.hasBuilding()) {
                         self.amountBuildingExcl = '';

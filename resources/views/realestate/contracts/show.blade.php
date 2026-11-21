@@ -189,8 +189,9 @@
                 <dt class="bg-gray-50 px-3.5 py-2.5 text-sm text-gray-600 font-medium border-t border-r border-gray-200">仕入れ案件</dt>
                 <dd class="px-3.5 py-2.5 text-sm border-t border-gray-200" style="grid-column: span 3;">
                     <a href="{{ route('realestate.procurements.show', $contract->procurement) }}" class="text-emerald-600 hover:underline">{{ $contract->procurement->procurement_code }} — {{ $contract->procurement->property_name }}</a>
-                    @if($contract->procurement->lot)
-                        <span class="text-gray-700 wrap-anywhere"> / 区画 {{ $contract->procurement->lot->summaryLabel() }}</span>
+                    {{-- 契約の区画（仕入れ案件の区画ではない。区画の無い契約は出さない） --}}
+                    @if($contract->procurementLot)
+                        <span class="text-gray-700 wrap-anywhere"> / 区画 {{ $contract->procurementLot->summaryLabel() }}</span>
                     @endif
                 </dd>
             @endif
@@ -227,6 +228,17 @@
                         @endif
                     </div>
                 @endforeach
+                {{-- 区画が 2 つ以上の土地の区画の契約: 比べる「現在の仕入れ原価」は按分した額（設計書 §5.6） --}}
+                @if($lotAllocation !== null)
+                    <div class="text-sm text-gray-600 wrap-anywhere" style="margin-top: 8px;">
+                        @if($lotAllocation['amount'] !== null)
+                            この区画の按分: 販売価格 {{ number_format($lotAllocation['lot_price']) }}円 ÷ 全区画の販売価格の合計 {{ number_format($lotAllocation['price_total']) }}円
+                            <span class="font-medium text-gray-800">→ {{ number_format($lotAllocation['amount']) }}円</span>
+                        @else
+                            この区画の按分: 全区画に販売価格が入っていないため、按分できません
+                        @endif
+                    </div>
+                @endif
                 {{-- ⚠ 上の内訳は仕入れ案件からのライブ値、下の「契約時点の原価」は契約の保存カラム。
                      別ソースなので「原価合計」と1つだけ出すと無音で食い違う（Bug #46）。必ず両方出す。 --}}
                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #fcd34d;">
@@ -234,7 +246,7 @@
                         契約時点の原価: {{ $contract->cost_amount !== null ? number_format($contract->cost_amount) . '円' : '—' }}
                     </div>
                     <div class="text-sm text-gray-600" style="margin-top: 4px;">
-                        現在の仕入れ原価: {{ number_format($liveCost) }}円
+                        現在の仕入れ原価: {{ $liveCost !== null ? number_format($liveCost) . '円' : '—' }}
                     </div>
                 </div>
                 @if($costDivergence !== null)

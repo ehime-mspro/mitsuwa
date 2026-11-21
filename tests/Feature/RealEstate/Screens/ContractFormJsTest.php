@@ -24,6 +24,7 @@ class ContractFormJsTest extends RealEstateScreenTestCase
         $sent = [
             'contract_type'            => ['contractType', self::tricky('種別')],
             'procurement_id'           => ['procurementId', self::tricky('仕入れ')],
+            'procurement_lot_id'       => ['procurementLotId', self::tricky('土地の区画')],
             'project_id'               => ['projectId', self::tricky('分譲地')],
             'lot_id'                   => ['lotId', self::tricky('区画')],
             'contract_amount_land'     => ['amountLand', self::tricky('土地')],
@@ -48,7 +49,7 @@ class ContractFormJsTest extends RealEstateScreenTestCase
         $this->assertSame(array_column($sent, 1), $this->evaluateJs($html, 'contractEditForm', array_column($sent, 0)), self::CHANGED);
     }
 
-    /** 仕入れの契約の編集画面: 仕入れ案件・税率・金額（分譲地・区画の欄は分譲地の契約にだけ出る） */
+    /** 仕入れの契約の編集画面: 仕入れ案件・土地の区画・税率・金額（分譲地・分譲地の区画の欄は分譲地の契約にだけ出る） */
     public function test_the_procurement_contract_edit_screen_keeps_the_returned_values(): void
     {
         $contract = ReContract::create([
@@ -59,6 +60,7 @@ class ContractFormJsTest extends RealEstateScreenTestCase
 
         $this->assertEditScreenKeeps($contract, [
             'procurement_id'           => ['procurementId', self::tricky('仕入れ')],
+            'procurement_lot_id'       => ['procurementLotId', self::tricky('土地の区画')],
             'tax_rate'                 => ['taxRate', self::tricky('税率')],
             'contract_amount_land'     => ['amountLand', self::tricky('土地')],
             'contract_amount_building' => ['amountBuildingExcl', self::tricky('建物')],
