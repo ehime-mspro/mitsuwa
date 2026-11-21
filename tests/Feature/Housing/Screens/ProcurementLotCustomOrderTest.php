@@ -417,6 +417,8 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         $estimate = $this->orderForContractEdit($land, $lot, ['status' => 'estimation']);
         $legacy = $this->orderForContractEdit($land, null, ['order_code' => 'CO-002', 'status' => 'estimation']);
         $this->sellByContract($land, $lot);
+        // 区画の無い「販売済」の土地（全区画が取られた土地の絞り込みでは外れない＝ステータスの絞り込みだけが外す）
+        $this->landProcurement(['procurement_code' => 'RE-PRC-002', 'property_name' => '区画なしの売れた土地', 'status' => 'sold']);
 
         $run = $this->driveAlpine($this->htmlOf($this->createUrl()), 'customOrderForm', 'customOrderForm()', '', evaluate: ['data.procurements.map(function (p) { return p.id; })']);
         $this->assertSame([], $run['evaluated'][0], '販売済の土地を新しい注文住宅の選択肢に出している');

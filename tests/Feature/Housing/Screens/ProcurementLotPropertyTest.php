@@ -423,6 +423,8 @@ class ProcurementLotPropertyTest extends HousingScreenTestCase
         $property = $this->propertyOn($land, $lot, ['land_cost' => 9600000, 'is_land_cost_manual' => false]);
         $this->registerContract($property);
         $this->assertSame(['sold', 'sold'], $this->statuses($land, $lot), 'テストの前提: 全区画が売れた土地が「販売済」になっていない');
+        // 区画の無い「販売済」の土地（全区画が取られた土地の絞り込みでは外れない＝ステータスの絞り込みだけが外す）
+        $this->landProcurement(['procurement_code' => 'RE-PRC-002', 'property_name' => '区画なしの売れた土地', 'status' => 'sold']);
         $ids = ['data.procurements.map(function (p) { return p.id; })'];
 
         $run = $this->driveAlpine($this->htmlOf($this->createUrl()), 'housingPropertyForm', 'housingPropertyForm()', '', evaluate: $ids);
