@@ -407,7 +407,13 @@ class HsCustomOrder extends Model
         }
         if ($this->land_source_type === HousingLandSourceType::Procurement && $this->procurement) {
             $p = $this->procurement;
-            return $p->procurement_code . ' ' . $p->property_name;
+            $label = $p->procurement_code . ' ' . $p->property_name;
+            // 土地の区画を選んだ注文住宅は区画も出す（分譲地区画の「… > N号地」と同じ形。建売と同じ）
+            if ($this->re_procurement_lot_id !== null && $this->procurementLot) {
+                $label .= ' > ' . $this->procurementLot->lot_number . '号地';
+            }
+
+            return $label;
         }
         if ($this->land_source_type === HousingLandSourceType::CustomerLand) {
             return 'お客様所有土地';
@@ -416,7 +422,9 @@ class HsCustomOrder extends Model
     }
 
     /**
-     * 紐づけ先の土地販売価格（参考値）
+     * 紐づけ先の土地販売価格（参考値）。
+     * 土地の区画を選んだ注文住宅は区画の販売価格（区画の販売価格が空なら null。決めたこと 1。建売と同じ）。
+     * 区画の無い注文住宅（区画の無い土地・#21 の形）は今どおり仕入れ案件の想定販売価格（土地）。
      */
     public function getReferenceLandSellingPrice(): ?int
     {
@@ -424,6 +432,10 @@ class HsCustomOrder extends Model
             return $this->projectLot->selling_price;
         }
         if ($this->land_source_type === HousingLandSourceType::Procurement && $this->procurement) {
+            if ($this->re_procurement_lot_id !== null) {
+                return $this->procurementLot?->selling_price;
+            }
+
             return $this->procurement->target_selling_price_land;
         }
         return null;

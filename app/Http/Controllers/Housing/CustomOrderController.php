@@ -10,13 +10,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Buyer;
 use App\Models\HsCustomOrder;
 use App\Models\HsCustomOrderFile;
-use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use App\Support\AttachmentDelivery;
 use App\Support\HousingLandCost;
+use App\Support\HousingProcurementLots;
 use App\Support\JapanTime;
+use App\Support\ProcurementLotClaims;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -72,15 +73,18 @@ class CustomOrderController extends Controller
     public function create()
     {
         $projectsForJs = $this->getProjectsForJs();
-        $procurementsForJs = $this->getProcurementsForJs();
+        // 仕入れ案件一覧（決済完了以降。全区画がほかに取られた土地は出さない。Ruling 8）
+        $procurementsForJs = HousingProcurementLots::formOptions(null);
         $defaultTaxRate = $this->getDefaultTaxRate();
         $buyers = $this->selectableBuyers(null);
 
         // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id'));
-        $computedLandCost = $this->computedLandCost(null);
+        // 土地の区画も同じ（決めたこと 8）。一覧に無くなった区画（取られた区画で断られた）は選ばず、その按分も出さない（Ruling 11）
+        $procurementLotSelection = HousingProcurementLots::initialSelection(old('re_procurement_id'), old('re_procurement_lot_id'), null);
+        $computedLandCost = $this->computedLandCost(null, $procurementLotSelection['lotId']);
 
-        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers', 'lotSelection', 'computedLandCost'));
+        return view('housing.custom-orders.create', compact('projectsForJs', 'procurementsForJs', 'defaultTaxRate', 'buyers', 'lotSelection', 'procurementLotSelection', 'computedLandCost'));
     }
 
     /**
@@ -120,7 +124,8 @@ class CustomOrderController extends Controller
     {
         $customOrder->load([
             'projectLot.project',
-            'procurement.lot',
+            'procurement',
+            'procurementLot',
             'files.uploadedByUser',
             'createdBy',
             'updatedBy',
@@ -159,18 +164,21 @@ class CustomOrderController extends Controller
      */
     public function edit(HsCustomOrder $customOrder)
     {
-        $customOrder->load(['projectLot.project', 'procurement']);
+        $customOrder->load(['projectLot.project', 'procurement', 'procurementLot']);
 
         $projectsForJs = $this->getProjectsForJs();
-        $procurementsForJs = $this->getProcurementsForJs();
+        $procurementsForJs = HousingProcurementLots::formOptions($customOrder);
 
         // 今の区画（入力エラーで戻ったら選んでいた区画）の分譲地と区画の一覧をサーバで描く（H1: 空から始めると保存で紐付けが消えていた）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $customOrder->re_project_lot_id));
-        $computedLandCost = $this->computedLandCost($customOrder);
+        // 土地の区画も同じ（今の区画は、あとでほかに取られていても残す。決めたこと 4・8。一覧に無い区画は選ばない。Ruling 11）
+        $procurementLotSelection = HousingProcurementLots::initialSelection(
+            old('re_procurement_id', $customOrder->re_procurement_id), old('re_procurement_lot_id', $customOrder->re_procurement_lot_id), $customOrder);
+        $computedLandCost = $this->computedLandCost($customOrder, $procurementLotSelection['lotId']);
 
         $buyers = $this->selectableBuyers($customOrder);
 
-        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost', 'buyers'));
+        return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'procurementLotSelection', 'computedLandCost', 'buyers'));
     }
 
     /**
@@ -250,6 +258,16 @@ class CustomOrderController extends Controller
 
         $oldStatus = $customOrder->status;
         $newStatus = CustomOrderStatus::from($request->status);
+
+        // 「契約」をまたいで進めると土地の区画を取る。区画がほかの契約・建売・契約以降の注文住宅に取られていれば断る（設計書 §5.3）。
+        // 「契約」以降どうしの変更（契約 → 着工 など）は区画を取り直さないので見ない（区画の連動 syncLotStatus() と同じ「またぐ」とき）。
+        // ⚠ 一覧の小窓は 422 の message をそのまま alert に出す。errors を付けない（付けると同じ文が 2 回出る。Review Focus 2）
+        if ($newStatus->isContractedOrLater() && ! $oldStatus->isContractedOrLater()) {
+            $refusal = ProcurementLotClaims::refusal($customOrder->re_procurement_lot_id, $customOrder, true);
+            if ($refusal !== null) {
+                return response()->json(['success' => false, 'message' => $refusal], 422);
+            }
+        }
 
         $customOrder->update([
             'status'     => $newStatus->value,
@@ -392,6 +410,14 @@ class CustomOrderController extends Controller
         $statuses = implode(',', array_column(CustomOrderStatus::cases(), 'value'));
         $sourceTypes = implode(',', array_column(HousingLandSourceType::cases(), 'value'));
 
+        // 土地の区画（設計書 §5.3）。土地元が仕入れ案件のときだけ見る（ほかの種別では保存しない＝setLandSourceForeignKeys() が空にする）。
+        // ⚠ 入力チェックの前に読むので、数字の文字か整数のときだけ使う（配列などは 0＝区画の無い案件として扱い、入力チェックが断る。Bug #121）
+        $isProcurement = $request->input('land_source_type') === HousingLandSourceType::Procurement->value;
+        $chosen = $request->input('re_procurement_id');
+        $chosenId = is_int($chosen) || (is_string($chosen) && $chosen !== '' && ctype_digit($chosen)) ? (int) $chosen : 0;
+        // 区画のある土地では必須（区画の無い保存済みの注文住宅＝#21 の形は、同じ仕入れ案件のままなら選ばずに保存できる。requiresLot()）
+        $lotRequired = $isProcurement && ProcurementLotClaims::requiresLot($chosen, $current);
+
         return Validator::make($request->all(), [
             // 買主（登録・編集とも必須。判断待ち ⑥）。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121）
             // 編集は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（手で番号を書き換えた送信で、ほかの部署の買主を紐付けさせない）。
@@ -406,6 +432,10 @@ class CustomOrderController extends Controller
             // 土地の種別を選んだのに紐付け先が空の保存は断る（D1。画面の選択が壊れても空で保存されないように）
             're_project_lot_id'         => 'nullable|required_if:land_source_type,project_lot|exists:re_project_lots,id',
             're_procurement_id'         => 'nullable|required_if:land_source_type,procurement|exists:re_procurements,id',
+            // 区画は選んだ仕入れ案件の区画だけ（別の土地の区画・無い区画は断る。Review Focus 1）
+            're_procurement_lot_id'     => $isProcurement
+                ? ['nullable', 'integer', Rule::requiredIf($lotRequired), Rule::exists('re_procurement_lots', 'id')->where('procurement_id', $chosenId)]
+                : 'exclude',
             'postal_code'               => 'nullable|string|max:10',
             'address'                   => 'required|string|max:200',
             'land_area_sqm'             => 'nullable|numeric|min:0|max:99999999.99',
@@ -429,18 +459,40 @@ class CustomOrderController extends Controller
         ], [
             're_project_lot_id.required_if' => '土地種別が分譲地区画のときは、区画を選んでください。',
             're_procurement_id.required_if' => '土地種別が仕入れ案件のときは、仕入れ案件を選んでください。',
+            're_procurement_lot_id.required' => '区画を選んでください。',
         ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」）
             'address' => '所在地',
-        ])->after(function ($validator) use ($current, $request) {
+        ])->after(function ($validator) use ($current, $request, $isProcurement) {
             if ($current?->refusesLandChange($request->all())) {
                 $validator->errors()->add('land_source_type', HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+            }
+
+            // 1 つの区画に付けられる建売・契約・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。注文住宅は、保存するステータスが
+            // 「契約」以降のときに区画を取る（見積り以前は取らないが、ほかに取られた区画を新しく選ぶ・変えることはできない。決めたこと 4）。
+            // 区画や仕入れ案件にほかの誤りがあれば見ない
+            if (! $isProcurement
+                || $validator->errors()->has('re_procurement_lot_id')
+                || $validator->errors()->has('re_procurement_id')) {
+                return;
+            }
+            // この保存で区画を取る＝「契約」をまたいで進める（保存済みが「契約」以降なら、今の区画はもう持っている。
+            // そのまま保存するだけなら断らない。Bug #130。土地はそのとき読み取り専用で、変えると refusesLandChange() が断る）
+            $status = $request->input('status');
+            $selfTakes = is_string($status)
+                && (CustomOrderStatus::tryFrom($status)?->isContractedOrLater() ?? false)
+                && ! ($current?->isLandLockedByContract() ?? false);
+            $refusal = ProcurementLotClaims::refusal($request->input('re_procurement_lot_id'), $current, $selfTakes);
+            if ($refusal !== null) {
+                $validator->errors()->add('re_procurement_lot_id', $refusal);
             }
         })->validate();
     }
 
     /**
-     * 紐づけ種別に応じてFKを設定/クリア
+     * 紐づけ種別に応じてFKを設定/クリア。
+     * ⚠ 土地の区画は、種別が仕入れ案件でも送られないことがある（区画の無い土地では選択欄が隠れて送られない）。
+     *   そのときも前の区画を残さない（validated() は送られないキーを含めない。Bug #38）
      */
     private function setLandSourceForeignKeys(array &$validated): void
     {
@@ -448,12 +500,15 @@ class CustomOrderController extends Controller
 
         if ($sourceType === HousingLandSourceType::ProjectLot->value) {
             $validated['re_procurement_id'] = null;
+            $validated['re_procurement_lot_id'] = null;
         } elseif ($sourceType === HousingLandSourceType::Procurement->value) {
             $validated['re_project_lot_id'] = null;
+            $validated['re_procurement_lot_id'] = isset($validated['re_procurement_lot_id']) ? (int) $validated['re_procurement_lot_id'] : null;
         } else {
             // customer_land or null
             $validated['re_project_lot_id'] = null;
             $validated['re_procurement_id'] = null;
+            $validated['re_procurement_lot_id'] = null;
         }
     }
 
@@ -488,14 +543,16 @@ class CustomOrderController extends Controller
     }
 
     /**
-     * 画面に出す「今の紐付け先から計算した土地原価」（入力エラーで戻った画面は選んでいた紐付け先。判断待ち ⑤）
+     * 画面に出す「今の紐付け先から計算した土地原価」（入力エラーで戻った画面は選んでいた紐付け先。判断待ち ⑤）。
+     * $procurementLotId は区画の選択の初めの値（HousingProcurementLots::initialSelection() の lotId。区画の選択肢に無くなった区画は
+     * 渡さない＝その区画の按分を出さない。Ruling 11）
      */
-    private function computedLandCost(?HsCustomOrder $order): ?int
+    private function computedLandCost(?HsCustomOrder $order, ?int $procurementLotId): ?int
     {
         $type = old('land_source_type', $order?->land_source_type?->value);
 
         return HousingLandCost::forLink(is_string($type) ? $type : null,
-            old('re_project_lot_id', $order?->re_project_lot_id), old('re_procurement_id', $order?->re_procurement_id));
+            old('re_project_lot_id', $order?->re_project_lot_id), old('re_procurement_id', $order?->re_procurement_id), $procurementLotId);
     }
 
     /**
@@ -546,26 +603,6 @@ class CustomOrderController extends Controller
     }
 
     /**
-     * 仕入れ案件一覧（JS用）
-     */
-    private function getProcurementsForJs(): array
-    {
-        $procurements = ReProcurement::whereIn('status', ['settled', 'selling'])
-            ->orderByDesc('id')
-            ->get(['id', 'procurement_code', 'property_name', 'address']);
-        $result = [];
-        foreach ($procurements as $pr) {
-            $result[] = [
-                'id'      => $pr->id,
-                'code'    => $pr->procurement_code,
-                'name'    => $pr->property_name,
-                'address' => $pr->address,
-            ];
-        }
-        return $result;
-    }
-
-    /**
      * 区画の選択の初期値。選んでいる区画の分譲地と、その分譲地の区画の一覧（API と同じ形）をサーバで作る。
      * ⚠ 区画の `<option>` は `<template x-for>` なので、一覧を空から始めると今の区画が選べず、空のまま送られる（Top trap #3）。
      *
@@ -597,12 +634,13 @@ class CustomOrderController extends Controller
             return;
         }
 
-        // 土地の仕入れ案件の区画（無ければ何もしない）
-        $procurementId = $order->re_procurement_id ? (int) $order->re_procurement_id : null;
+        // 土地の仕入れ案件の区画: その注文住宅の区画だけを動かし、仕入れ案件のステータスを区画から集約する（設計書 §5.4）。
+        // 区画の無い注文住宅（区画の無い土地・#21 の形）は何もしない
+        $procurementLotId = $order->re_procurement_lot_id ? (int) $order->re_procurement_lot_id : null;
         if ($newIsContracted) {
-            ReProcurementLot::markSoldFor($procurementId);
+            ReProcurementLot::markSold($procurementLotId);
         } else {
-            ReProcurementLot::markOnSaleFor($procurementId);
+            ReProcurementLot::markOnSale($procurementLotId);
         }
 
         // 分譲地の区画
@@ -625,7 +663,8 @@ class CustomOrderController extends Controller
             return;
         }
 
-        ReProcurementLot::markOnSaleFor($order->re_procurement_id ? (int) $order->re_procurement_id : null);
+        // 土地の仕入れ案件の区画: その注文住宅の区画だけを販売中にする（区画の無い注文住宅は何もしない）
+        ReProcurementLot::markOnSale($order->re_procurement_lot_id ? (int) $order->re_procurement_lot_id : null);
 
         if (!$order->re_project_lot_id) {
             return;

@@ -13,7 +13,9 @@ use App\Models\ReProcurement;
 use App\Models\ReProjectLot;
 use App\Models\User;
 use App\Support\HousingLandCost;
+use App\Support\HousingProcurementLots;
 use App\Support\JapanTime;
+use App\Support\ProcurementLotClaims;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -179,6 +181,7 @@ class HsContractListController extends Controller
         $hsCustomOrder->load([
             'projectLot.project',
             'procurement',
+            'procurementLot',
             'createdBy',
             'updatedBy',
         ]);
@@ -313,7 +316,7 @@ class HsContractListController extends Controller
      */
     public function editCustomOrder(HsCustomOrder $hsCustomOrder)
     {
-        $hsCustomOrder->load(['projectLot.project', 'procurement', 'createdBy']);
+        $hsCustomOrder->load(['projectLot.project', 'procurement', 'procurementLot', 'createdBy']);
 
         // 担当者リスト
         $staffUsers = User::assignableWith($hsCustomOrder->created_by);
@@ -321,15 +324,20 @@ class HsContractListController extends Controller
         // 買主マスタ（住宅事業所属。現在紐付け中のbuyerが SoftDelete されていても選択可能にする）
         $buyers = $this->selectableCustomOrderBuyers($hsCustomOrder);
 
-        // 仕入れ案件 / 分譲地区画リスト（プルダウン選択用）
-        $procurements = ReProcurement::orderBy('procurement_code')->get();
+        // 仕入れ案件 / 分譲地区画リスト（プルダウン選択用）。仕入れ案件は、全区画がほかに取られた土地を出さない（今の仕入れ案件は残す。Ruling 8）
+        $procurements = HousingProcurementLots::offered(ReProcurement::orderBy('procurement_code')->get(), $hsCustomOrder);
         $projectLots = ReProjectLot::with('project')->orderBy('id')->get();
 
+        // 土地の区画の選択の初めの値（入力エラーで戻ったら選んでいた区画。一覧に無い区画は選ばない。決めたこと 4・8・Ruling 11）
+        $procurementLotSelection = HousingProcurementLots::initialSelection(
+            old('re_procurement_id', $hsCustomOrder->re_procurement_id), old('re_procurement_lot_id', $hsCustomOrder->re_procurement_lot_id), $hsCustomOrder);
+
         // 手動 OFF の表示に使う「保存済みの紐付け先から計算した土地原価」（判断待ち ⑤。紐付け先を変えたら画面は金額を出さない）
-        $computedLandCost = HousingLandCost::forLink($hsCustomOrder->land_source_type?->value, $hsCustomOrder->re_project_lot_id, $hsCustomOrder->re_procurement_id);
+        $computedLandCost = HousingLandCost::forLink($hsCustomOrder->land_source_type?->value, $hsCustomOrder->re_project_lot_id,
+            $hsCustomOrder->re_procurement_id, $hsCustomOrder->re_procurement_lot_id);
 
         return view('housing.contracts.edit-custom-order', compact(
-            'hsCustomOrder', 'staffUsers', 'buyers', 'procurements', 'projectLots', 'computedLandCost'
+            'hsCustomOrder', 'staffUsers', 'buyers', 'procurements', 'projectLots', 'procurementLotSelection', 'computedLandCost'
         ));
     }
 
@@ -365,6 +373,11 @@ class HsContractListController extends Controller
         // ⚠ 固定のときは種別を必須にしない — 種別が空の契約済みの注文住宅も、画面のまま保存できるように（固定の判定が「今と同じ」を見る）。
         // ⚠ after のフックで見る（ほかの誤りと一度に出す。Bug #112）。
         $landLocked = $hsCustomOrder->isLandLockedByContract();
+        // 土地の区画（設計書 §5.3）。土地元が仕入れ案件のときだけ見る。⚠ 入力チェックの前に読むので数字のときだけ使う（Bug #121）
+        $isProcurement = $request->input('land_source_type') === HousingLandSourceType::Procurement->value;
+        $chosen = $request->input('re_procurement_id');
+        $chosenId = is_int($chosen) || (is_string($chosen) && $chosen !== '' && ctype_digit($chosen)) ? (int) $chosen : 0;
+        $lotRequired = $isProcurement && ProcurementLotClaims::requiresLot($chosen, $hsCustomOrder);
         $validated = Validator::make($request->all(), [
             'customer_name'           => 'required|string|max:100',
             // 画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（注文住宅の編集画面と同じ。手で書き換えた番号でほかの部署・
@@ -381,6 +394,10 @@ class HsContractListController extends Controller
             // 土地の種別を選んだのに紐付け先が空の保存は断る（D1）
             're_project_lot_id'       => 'nullable|required_if:land_source_type,project_lot|integer|exists:re_project_lots,id',
             're_procurement_id'       => 'nullable|required_if:land_source_type,procurement|integer|exists:re_procurements,id',
+            // 区画は選んだ仕入れ案件の区画だけ（区画のある土地では必須。区画の無い保存済みの注文住宅は同じ仕入れ案件のままなら要らない）
+            're_procurement_lot_id'   => $isProcurement
+                ? ['nullable', 'integer', Rule::requiredIf($lotRequired), Rule::exists('re_procurement_lots', 'id')->where('procurement_id', $chosenId)]
+                : 'exclude',
             // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
             'land_selling_price'      => 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN,
             'building_contract_price' => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,
@@ -400,9 +417,23 @@ class HsContractListController extends Controller
         ], [
             're_project_lot_id.required_if' => '土地種別が分譲地のときは、分譲地区画を選んでください。',
             're_procurement_id.required_if' => '土地種別が仕入れ土地のときは、仕入れ案件を選んでください。',
-        ])->after(function ($validator) use ($hsCustomOrder, $request) {
+            're_procurement_lot_id.required' => '区画を選んでください。',
+        ])->after(function ($validator) use ($hsCustomOrder, $request, $isProcurement) {
             if ($hsCustomOrder->refusesLandChange($request->all())) {
                 $validator->errors()->add('land_source_type', HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
+            }
+
+            // 区画を取れるのは 1 件だけ（設計書 §5.3）。この画面はステータスを変えないので、この保存で区画を取ることは無い
+            // （保存済みが「契約」以降なら今の区画はもう持っていて、土地は読み取り専用。そのまま保存するだけなら断らない。Bug #130）。
+            // 見積り以前の注文住宅が、ほかに取られた区画を新しく選ぶ・変えるときだけ断る（決めたこと 4）
+            if (! $isProcurement
+                || $validator->errors()->has('re_procurement_lot_id')
+                || $validator->errors()->has('re_procurement_id')) {
+                return;
+            }
+            $refusal = ProcurementLotClaims::refusal($request->input('re_procurement_lot_id'), $hsCustomOrder, false);
+            if ($refusal !== null) {
+                $validator->errors()->add('re_procurement_lot_id', $refusal);
             }
         })->validate();
 
@@ -434,6 +465,7 @@ class HsContractListController extends Controller
                 // 顧客所有地: 土地関連カラムをすべてクリア
                 $data['re_project_lot_id']   = null;
                 $data['re_procurement_id']   = null;
+                $data['re_procurement_lot_id'] = null;
                 $data['land_selling_price']  = null;
                 $data['land_cost']           = null;
                 $data['is_land_cost_manual'] = false;
@@ -442,14 +474,18 @@ class HsContractListController extends Controller
                 if ($sourceType === HousingLandSourceType::ProjectLot->value) {
                     $data['re_project_lot_id'] = $validated['re_project_lot_id'] ?? null;
                     $data['re_procurement_id'] = null;
+                    $data['re_procurement_lot_id'] = null;
                 } elseif ($sourceType === HousingLandSourceType::Procurement->value) {
                     $data['re_procurement_id'] = $validated['re_procurement_id'] ?? null;
                     $data['re_project_lot_id'] = null;
+                    // 区画の無い土地では区画の欄が送られない。そのときも前の区画を残さない（Bug #38）
+                    $data['re_procurement_lot_id'] = isset($validated['re_procurement_lot_id']) ? (int) $validated['re_procurement_lot_id'] : null;
                 } else {
                     // 種別が空（契約済みで固定の注文住宅だけが通る）: 紐付けを書かない（CustomOrderController::setLandSourceForeignKeys と同じ）。
                     // ⚠ 仕入れ案件の枝へ落とすと、手で組んだ送信の re_procurement_id が種別の無いまま書かれる
                     $data['re_project_lot_id'] = null;
                     $data['re_procurement_id'] = null;
+                    $data['re_procurement_lot_id'] = null;
                 }
                 $data['land_selling_price'] = $validated['land_selling_price'] ?? null;
                 // 手動 ON は送られた値。OFF はサーバーが決める（手入力をやめた・紐付け先を変えた・「今の計算値にする」なら
@@ -457,9 +493,10 @@ class HsContractListController extends Controller
                 $data['land_cost'] = $isManual
                     ? ($validated['land_cost'] ?? null)
                     : HousingLandCost::whenAutomatic($hsCustomOrder, [
-                        'land_source_type'  => $sourceType,
-                        're_project_lot_id' => $data['re_project_lot_id'],
-                        're_procurement_id' => $data['re_procurement_id'],
+                        'land_source_type'      => $sourceType,
+                        're_project_lot_id'     => $data['re_project_lot_id'],
+                        're_procurement_id'     => $data['re_procurement_id'],
+                        're_procurement_lot_id' => $data['re_procurement_lot_id'],
                     ], $request->boolean('refresh_land_cost'));
             }
 

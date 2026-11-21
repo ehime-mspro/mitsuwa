@@ -58,6 +58,8 @@ class AjaxErrorFeedbackTest extends TestCase
         //    顧客名のフリーテキスト（テナント事業の顧客検索 API を叩いていた）を
         //    _buyer-select パーシャルへ置き換えた結果、このビューから fetch が無くなったため。
         //    このラチェットの test_every_fetch_view_is_classified が陳腐化を検出してくれた。
+        // 注文住宅の契約の編集（仕入れ案件を変えたときの土地の区画の一覧。2026-11-21 に足した）
+        'housing/contracts/edit-custom-order.blade.php',
         'housing/custom-orders/_form.blade.php',
         'housing/custom-orders/index.blade.php',
         'housing/custom-orders/show.blade.php',

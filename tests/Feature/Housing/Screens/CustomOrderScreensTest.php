@@ -132,8 +132,8 @@ class CustomOrderScreensTest extends HousingScreenTestCase
                     "{$view} の x-model=\"{$model}\" の選択肢に :selected が無い");
             }
         }
-        // 分譲地・区画・仕入れ案件（2 画面 × 3）＋ 建売の土地の区画（1）
-        $this->assertSame(7, $checked, '分譲地・区画・仕入れ案件・土地の区画の選択欄を拾えていない');
+        // 分譲地・区画・仕入れ案件（2 画面 × 3）＋ 土地の区画（建売・注文住宅の 2 画面 × 1）
+        $this->assertSame(8, $checked, '分譲地・区画・仕入れ案件・土地の区画の選択欄を拾えていない');
     }
 
     // ============================================================

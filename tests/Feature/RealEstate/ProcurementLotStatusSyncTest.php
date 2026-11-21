@@ -131,12 +131,14 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         ], $overrides));
     }
 
-    private function orderOnLand(int $procurementId, string $status): HsCustomOrder
+    /** 土地の区画に建てる注文住宅（区画が null なら区画の無い注文住宅＝#21 の形） */
+    private function orderOnLand(int $procurementId, string $status, ?ReProcurementLot $lot = null): HsCustomOrder
     {
         return $this->customOrder([
             'status' => $status,
             'land_source_type' => 'procurement',
             're_procurement_id' => $procurementId,
+            're_procurement_lot_id' => $lot?->id,
         ]);
     }
 
@@ -146,17 +148,24 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
             ->assertOk();
     }
 
+    /** 注文住宅が「契約」をまたぐと、その注文住宅の区画だけが動く（土地のほかの区画・区画の無い注文住宅は動かさない。設計書 §5.4） */
     public function test_a_custom_order_crossing_contracted_moves_the_lot(): void
     {
         $procurement = $this->landProcurement();
         $lot = $this->procurementLot($procurement);
-        $order = $this->orderOnLand($procurement->id, 'estimation');
+        $other = $this->procurementLot($procurement, ['lot_number' => 2]);
+        $order = $this->orderOnLand($procurement->id, 'estimation', $lot);
 
         $this->setOrderStatus($order, 'contracted');
-        $this->assertSame(LotStatus::Sold, $this->lotStatus($lot));
+        $this->assertSame([LotStatus::Sold, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
 
         $this->setOrderStatus($order->fresh(), 'design');
-        $this->assertSame(LotStatus::OnSale, $this->lotStatus($lot));
+        $this->assertSame([LotStatus::OnSale, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
+
+        // 区画の無い注文住宅（#21 の形）は区画を動かさない
+        $legacy = $this->orderOnLand($procurement->id, 'estimation');
+        $this->setOrderStatus($legacy, 'contracted');
+        $this->assertSame([LotStatus::OnSale, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
     }
 
     public function test_a_custom_order_stored_as_contracted_marks_the_lot_sold(): void
@@ -175,6 +184,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
             'contract_date' => '2026-07-19',
             'land_source_type' => 'procurement',
             're_procurement_id' => $procurement->id,
+            're_procurement_lot_id' => $lot->id,
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(LotStatus::Sold, $this->lotStatus($lot));
@@ -184,7 +194,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
     {
         $procurement = $this->landProcurement();
         $lot = $this->procurementLot($procurement);
-        $contracted = $this->orderOnLand($procurement->id, 'contracted');
+        $contracted = $this->orderOnLand($procurement->id, 'contracted', $lot);
         $lot->update(['status' => LotStatus::Sold->value]);
 
         $this->actingAs($this->user)->delete("/housing/custom-orders/{$contracted->id}")->assertRedirect();
@@ -192,7 +202,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
 
         // 契約前の注文住宅を消しても、ほかの経路で成約にした区画はそのまま
         ReProcurementLot::query()->update(['status' => LotStatus::Sold->value]);
-        $early = $this->orderOnLand($procurement->id, 'estimation');
+        $early = $this->orderOnLand($procurement->id, 'estimation', $lot);
         $this->actingAs($this->user)->delete("/housing/custom-orders/{$early->id}")->assertRedirect();
         $this->assertSame(LotStatus::Sold, $this->lotStatus($lot));
     }

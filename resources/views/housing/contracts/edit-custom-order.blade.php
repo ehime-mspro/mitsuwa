@@ -321,6 +321,14 @@
     $isLandCostManualValue = (bool) old('is_land_cost_manual', $hsCustomOrder->is_land_cost_manual);
     $reProjectLotIdValue = old('re_project_lot_id', $hsCustomOrder->re_project_lot_id);
     $reProcurementIdValue = old('re_procurement_id', $hsCustomOrder->re_procurement_id);
+    // 土地の区画（コントローラが作る。区画の一覧はサーバが描く。一覧に無い区画は選ばない。決めたこと 8・Ruling 11）
+    $reProcurementLotIdValue = (string) ($procurementLotSelection['lotId'] ?? '');
+    $initialProcurementLots = $procurementLotSelection['lots'];
+    // 区画の無い保存済みの注文住宅（#21 の形）の仕入れ案件。同じ仕入れ案件のままなら区画を選ばずに保存できる（決めたこと 9・Review Focus 4）
+    $legacyLotlessProcurementId = $hsCustomOrder->land_source_type === \App\Enums\HousingLandSourceType::Procurement
+        && $hsCustomOrder->re_procurement_id !== null
+        && $hsCustomOrder->re_procurement_lot_id === null
+        ? (string) $hsCustomOrder->re_procurement_id : '';
     $contractDateValue = old('contract_date', $hsCustomOrder->contract_date?->format('Y-m-d') ?? '');
 
     // 紐付け先のURLマップ（@json() に集約計算を入れず、ここで純粋な配列を構築）
@@ -341,9 +349,11 @@
     isLandCostManual: {{ $isLandCostManualValue ? 'true' : 'false' }},
     reProjectLotId: {{ \Illuminate\Support\Js::from((string) $reProjectLotIdValue) }},
     reProcurementId: {{ \Illuminate\Support\Js::from((string) $reProcurementIdValue) }},
+    reProcurementLotId: {{ \Illuminate\Support\Js::from($reProcurementLotIdValue) }},
+    legacyLotlessProcurementId: {{ \Illuminate\Support\Js::from($legacyLotlessProcurementId) }},
     savedManual: {{ \Illuminate\Support\Js::from((bool) $hsCustomOrder->is_land_cost_manual) }},
     savedLandCost: {{ \Illuminate\Support\Js::from($hsCustomOrder->land_cost) }},
-    savedLink: {{ \Illuminate\Support\Js::from(['type' => $hsCustomOrder->land_source_type?->value, 'lot' => $hsCustomOrder->re_project_lot_id, 'procurement' => $hsCustomOrder->re_procurement_id]) }},
+    savedLink: {{ \Illuminate\Support\Js::from(['type' => $hsCustomOrder->land_source_type?->value, 'lot' => $hsCustomOrder->re_project_lot_id, 'procurement' => $hsCustomOrder->re_procurement_id, 'procurementLot' => $hsCustomOrder->re_procurement_lot_id]) }},
     computedLandCost: {{ \Illuminate\Support\Js::from($computedLandCost) }},
     refreshLandCost: {{ old('refresh_land_cost') ? 'true' : 'false' }}
 })">
@@ -434,10 +444,16 @@
                     </div>
                 @elseif($hsCustomOrder->land_source_type?->value === 'procurement')
                     <input type="hidden" name="re_procurement_id" value="{{ $hsCustomOrder->re_procurement_id }}">
+                    @if($hsCustomOrder->re_procurement_lot_id !== null)
+                        <input type="hidden" name="re_procurement_lot_id" value="{{ $hsCustomOrder->re_procurement_lot_id }}">
+                    @endif
                     <div class="hc-field">
                         <label class="field-label">仕入れ案件（変更不可）</label>
                         @if($hsCustomOrder->procurement)
                             <p class="text-sm text-gray-700">{{ $hsCustomOrder->procurement->procurement_code }} {{ $hsCustomOrder->procurement->property_name }}</p>
+                            @if($hsCustomOrder->procurementLot)
+                                <p class="text-sm text-gray-600 wrap-anywhere">区画 {{ $hsCustomOrder->procurementLot->summaryLabel() }}</p>
+                            @endif
                             <a class="hc-land-link" href="{{ route('realestate.procurements.show', $hsCustomOrder->procurement) }}" target="_blank" rel="noopener">→ 仕入れ案件を開く</a>
                         @else
                             <p class="text-sm text-gray-500">—</p>
@@ -472,7 +488,7 @@
                 <div x-show="landSourceType === 'procurement'" style="display:none;">
                     <div class="hc-field">
                         <label class="field-label">仕入れ案件</label>
-                        <select name="re_procurement_id" class="hc-select" x-model="reProcurementId">
+                        <select name="re_procurement_id" class="hc-select" x-model="reProcurementId" @change="onProcurementChange()">
                             <option value="">— 選択してください</option>
                             @foreach($procurements as $p)
                                 <option value="{{ $p->id }}" @selected($reProcurementIdValue == $p->id)>{{ $p->procurement_code }} {{ $p->property_name }}</option>
@@ -482,6 +498,22 @@
                         <template x-if="reProcurementId && procurementUrls[reProcurementId]">
                             <a class="hc-land-link" :href="procurementUrls[reProcurementId]" target="_blank" rel="noopener">→ 仕入れ案件を開く</a>
                         </template>
+                    </div>
+                    {{-- 土地の区画（選んだ土地に選べる区画があるときだけ。:selected で今の区画を選ぶ。Top trap #3）。
+                         ⚠ HTML の required は付けない（必須はサーバが決める。決めたこと 9）。この画面は区画の販売済を動かさない
+                         （ステータスを変えないので。区画を取るのは保存済みのステータスが「契約」以降のときだけで、そのときは読み取り専用） --}}
+                    <div class="hc-field" x-show="procurementLots.length > 0" style="display:none;">
+                        <label class="field-label">区画</label>
+                        <select name="re_procurement_lot_id" class="hc-select" x-model="reProcurementLotId" :disabled="landSourceType !== 'procurement' || procurementLots.length === 0">
+                            <option value="">— 選択してください</option>
+                            <template x-for="lot in procurementLots" :key="lot.id">
+                                <option :value="lot.id" :selected="String(lot.id) === String(reProcurementLotId)" x-text="lot.label"></option>
+                            </template>
+                        </select>
+                        @if($legacyLotlessProcurementId !== '')
+                            <p x-show="showsLegacyNotice()" style="display:none;" class="text-xs text-gray-500 mt-1">区画を選ばずに保存すると、今のまま（区画なし）で保存します。</p>
+                        @endif
+                        @error('re_procurement_lot_id') <p class="error-msg">{{ $message }}</p> @enderror
                     </div>
                 </div>
             @endif
@@ -733,6 +765,9 @@
 
 </div>
 
+{{-- 断られた GET の Ajax の文（ログインが切れた・権限が無い。仕入れ案件を変えたときの区画の一覧） --}}
+@include('_partials._ajax_get_failure')
+
 {{-- フォーム制御スクリプト（@section 内にインライン）。
      ⚠ @stack('scripts') は 2026-07-26 に追加済みだが、動いているため push へ移していない（Bug #28） --}}
 <script>
@@ -743,6 +778,11 @@ function customOrderEditForm(initial) {
         isLandCostManual: !!initial.isLandCostManual,
         reProjectLotId: initial.reProjectLotId || '',
         reProcurementId: initial.reProcurementId || '',
+        // 土地の区画（区画の一覧はサーバが描く。決めたこと 8）
+        reProcurementLotId: initial.reProcurementLotId || '',
+        procurementLots: @json($initialProcurementLots),
+        // 区画の無い保存済みの注文住宅の仕入れ案件（空でなければ、その仕入れ案件のまま区画を選ばずに保存できる。Review Focus 4）
+        legacyLotlessProcurementId: initial.legacyLotlessProcurementId || '',
 
         // 土地原価の手動 OFF の決まり（判断待ち ⑤。保存済みの値は DB から読む＝入力エラーで戻った画面でも old() を見ない）
         savedManual: !!initial.savedManual,
@@ -757,7 +797,7 @@ function customOrderEditForm(initial) {
 
         // 紐付け先を変えたか（契約前の注文住宅だけ。新しい紐付け先の金額は分からないので、金額を出さない）
         landCostLinkChanged: function() {
-            return housingLandLinkChanged(this.savedLink, { type: this.landSourceType, lot: this.reProjectLotId, procurement: this.reProcurementId });
+            return housingLandLinkChanged(this.savedLink, { type: this.landSourceType, lot: this.reProjectLotId, procurement: this.reProcurementId, procurementLot: this.reProcurementLotId });
         },
 
         landCostView: function() {
@@ -777,6 +817,48 @@ function customOrderEditForm(initial) {
         landCostShownText: function() {
             var value = this.landCostView().value;
             return value === null ? '' : housingYen(value);
+        },
+
+        init: function() {
+            var self = this;
+            // 土地の区画の一覧に無い区画は選ばない（取られた区画で断られて戻った画面など。サーバも外して渡す。Ruling 11）
+            if (self.reProcurementLotId && !self.procurementLots.some(function (lot) { return String(lot.id) === String(self.reProcurementLotId); })) {
+                self.reProcurementLotId = '';
+            }
+        },
+
+        // 区画の無い保存済みの注文住宅が、同じ仕入れ案件のまま（区画を選ばずに保存できる）か
+        showsLegacyNotice: function() {
+            return this.legacyLotlessProcurementId !== '' && String(this.reProcurementId) === this.legacyLotlessProcurementId;
+        },
+
+        // 仕入れ案件を変えたら、その土地の区画を API から取る（ほかに取られた区画は API が外す。この注文住宅の今の区画は残す）。
+        // 選べる区画が 1 つなら、それを選ぶ（利用者が仕入れ案件を選んだときだけ。画面を開いたときは選ばない。Ruling 5）
+        onProcurementChange: function() {
+            var self = this;
+            self.reProcurementLotId = '';
+            self.procurementLots = [];
+            if (!self.reProcurementId) return;
+            fetch('{{ url("/api/housing/procurement-info") }}/' + self.reProcurementId + '?custom_order_id={{ (int) $hsCustomOrder->id }}', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(res) {
+                if (!res.ok) {
+                    return ajaxGetFailure(res, '仕入れ案件の情報を取得', '仕入れ案件情報の取得に失敗しました（' + res.status + '）').then(function (message) {
+                        alert(message);
+                        return null;
+                    });
+                }
+                return res.json();
+            })
+            .then(function(data) {
+                if (!data) return;
+                self.procurementLots = data.lots || [];
+                if (self.procurementLots.length === 1) {
+                    self.reProcurementLotId = String(self.procurementLots[0].id);
+                }
+            })
+            .catch(function() { alert('仕入れ案件情報の取得に失敗しました。通信エラーが発生しました。'); });
         }
     };
 }

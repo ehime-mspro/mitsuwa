@@ -74,8 +74,9 @@
                     <a href="{{ route('realestate.projects.show', $o->projectLot->project_id) }}" style="color: #1d4ed8; text-decoration: underline;">{{ $o->getLandSourceDisplay() }}</a>
                 @elseif($o->land_source_type === \App\Enums\HousingLandSourceType::Procurement && $o->procurement)
                     <a href="{{ route('realestate.procurements.show', $o->procurement) }}" style="color: #1d4ed8; text-decoration: underline;">{{ $o->getLandSourceDisplay() }}</a>
-                    @if($o->procurement->lot)
-                        <div style="font-size: 13px; color: #4b5563; margin-top: 3px;">区画 {{ $o->procurement->lot->lot_number }}号地 {{ $o->procurement->lot->areaLabel() }}</div>
+                    {{-- 注文住宅の区画（土地のほかの区画は出さない。区画の無い注文住宅は出さない） --}}
+                    @if($o->procurementLot)
+                        <div style="font-size: 13px; color: #4b5563; margin-top: 3px;">区画 {{ $o->procurementLot->lot_number }}号地 {{ $o->procurementLot->areaLabel() }}</div>
                     @endif
                 @elseif($isCustomerLand)
                     <span class="text-gray-500">—（お客様所有）</span>

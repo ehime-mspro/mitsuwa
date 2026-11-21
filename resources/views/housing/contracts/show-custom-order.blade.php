@@ -177,6 +177,10 @@
                     @elseif($hsCustomOrder->procurement)
                         <a href="{{ route('realestate.procurements.show', $hsCustomOrder->procurement) }}" style="color: #059669; text-decoration: none;">
                             {{ $hsCustomOrder->procurement->property_name }}
+                            {{-- 注文住宅の区画（分譲地区画と同じ形。区画の無い注文住宅は出さない） --}}
+                            @if($hsCustomOrder->procurementLot)
+                                {{ $hsCustomOrder->procurementLot->lot_number }}号地
+                            @endif
                         </a>
                     @else
                         —

@@ -7,6 +7,16 @@
     // 区画の選択の初期値（コントローラが作る。@json には単一の変数を渡す。Bug #26）
     $initialProjectId = $lotSelection['projectId'];
     $initialLots = $lotSelection['lots'];
+    // 土地の区画の選択の初期値（コントローラが作る。区画の一覧はサーバが描く。決めたこと 8）。
+    // 一覧に無くなった区画（取られた区画で断られた）は選ばない（Ruling 11。App\Support\HousingProcurementLots::initialSelection()）
+    $initialProcurementLots = $procurementLotSelection['lots'];
+    $initialProcurementLotId = (string) ($procurementLotSelection['lotId'] ?? '');
+    // 区画の無い保存済みの注文住宅（#21 の形）の仕入れ案件。同じ仕入れ案件のままなら区画を選ばずに保存できる（決めたこと 9・Review Focus 4）
+    $legacyLotlessProcurementId = $isEdit
+        && $o->land_source_type === \App\Enums\HousingLandSourceType::Procurement
+        && $o->re_procurement_id !== null
+        && $o->re_procurement_lot_id === null
+        ? (string) $o->re_procurement_id : '';
 @endphp
 
 <div x-data="customOrderForm()">
@@ -62,6 +72,9 @@
                 <input type="hidden" name="re_project_lot_id" value="{{ $o->re_project_lot_id }}">
             @elseif($o->land_source_type === \App\Enums\HousingLandSourceType::Procurement)
                 <input type="hidden" name="re_procurement_id" value="{{ $o->re_procurement_id }}">
+                @if($o->re_procurement_lot_id !== null)
+                    <input type="hidden" name="re_procurement_lot_id" value="{{ $o->re_procurement_lot_id }}">
+                @endif
             @endif
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
                 <p class="text-xs font-semibold text-gray-500 mb-2">土地種別・紐付け先（変更不可）</p>
@@ -80,6 +93,9 @@
                         </a>
                         <span class="text-gray-600 ml-2">（{{ $o->procurement->address }}）</span>
                     </div>
+                    @if($o->procurementLot)
+                        <div class="text-sm text-gray-600 mt-1 wrap-anywhere">区画 {{ $o->procurementLot->summaryLabel() }}</div>
+                    @endif
                 @endif
                 <p class="text-xs text-gray-500 mt-2">契約済みのため、土地の紐付け（種別・区画・仕入れ案件）は変えられません。変えるときは、ステータスを「見積り」以前に戻して保存してから変えてください。</p>
                 @error('land_source_type') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
@@ -150,6 +166,23 @@
                         </template>
                     </select>
                     @error('re_procurement_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+                {{-- 土地の区画（選んだ土地に選べる区画があるときだけ。分譲地区画の選択欄と同じ作り＝:selected。Top trap #3）。
+                     ⚠ HTML の required は付けない（必須はサーバが決める。区画の無い保存済みの注文住宅はそのまま保存できる。決めたこと 9）。
+                     見積り以前の注文住宅は、ほかの見積りの注文住宅と同じ区画を選べる（「契約」へ進むときに断る。決めたこと 4） --}}
+                <div x-show="procurementLots.length > 0" style="display: none;" class="mt-3">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">区画</label>
+                    <select name="re_procurement_lot_id" x-model="selectedProcurementLotId" @change="onProcurementLotChange()" :disabled="landSourceType !== 'procurement' || procurementLots.length === 0"
+                            class="form-input w-full h-[40px] px-3 border border-gray-300 rounded-md text-sm text-gray-800 focus:border-emerald-500 focus:outline-none cursor-pointer">
+                        <option value="">— 区画を選択 —</option>
+                        <template x-for="lot in procurementLots" :key="lot.id">
+                            <option :value="lot.id" :selected="String(lot.id) === String(selectedProcurementLotId)" x-text="lot.label"></option>
+                        </template>
+                    </select>
+                    @if($legacyLotlessProcurementId !== '')
+                        <p x-show="showsLegacyNotice()" style="display: none;" class="text-xs text-gray-500 mt-1">区画を選ばずに保存すると、今のまま（区画なし）で保存します。</p>
+                    @endif
+                    @error('re_procurement_lot_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>
             </div>
 
@@ -303,6 +336,10 @@ function customOrderForm() {
         selectedProjectId: {{ \Illuminate\Support\Js::from($initialProjectId) }},
         selectedLotId: {{ \Illuminate\Support\Js::from(old('re_project_lot_id', $o?->re_project_lot_id)) }},
         selectedProcurementId: {{ \Illuminate\Support\Js::from(old('re_procurement_id', $o?->re_procurement_id)) }},
+        // 土地の区画（区画の一覧はサーバが描く。入力エラーで戻った画面・編集画面。決めたこと 8）
+        selectedProcurementLotId: {{ \Illuminate\Support\Js::from($initialProcurementLotId) }},
+        // 区画の無い保存済みの注文住宅の仕入れ案件（空でなければ、その仕入れ案件のまま区画を選ばずに保存できる。Review Focus 4）
+        legacyLotlessProcurementId: {{ \Illuminate\Support\Js::from($legacyLotlessProcurementId) }},
         postalCode: {{ \Illuminate\Support\Js::from((string) old('postal_code', $o?->postal_code ?? '')) }},
         address: {{ \Illuminate\Support\Js::from((string) old('address', $o?->address ?? '')) }},
         landAreaSqm: {{ \Illuminate\Support\Js::from((string) old('land_area_sqm', $o?->land_area_sqm ?? '')) }},
@@ -311,7 +348,7 @@ function customOrderForm() {
         // 土地原価の手動 OFF の決まり（判断待ち ⑤）。保存済みの値は DB から読む（入力エラーで戻った画面でも old() を見ない）
         savedManual: {{ \Illuminate\Support\Js::from((bool) ($o?->is_land_cost_manual ?? false)) }},
         savedLandCost: {{ \Illuminate\Support\Js::from($o?->land_cost) }},
-        savedLink: {{ \Illuminate\Support\Js::from(['type' => $o?->land_source_type?->value, 'lot' => $o?->re_project_lot_id, 'procurement' => $o?->re_procurement_id]) }},
+        savedLink: {{ \Illuminate\Support\Js::from(['type' => $o?->land_source_type?->value, 'lot' => $o?->re_project_lot_id, 'procurement' => $o?->re_procurement_id, 'procurementLot' => $o?->re_procurement_lot_id]) }},
         creating: {{ \Illuminate\Support\Js::from(! $isEdit) }},
         computedLandCost: {{ \Illuminate\Support\Js::from($computedLandCost) }},
         refreshLandCost: {{ old('refresh_land_cost') ? 'true' : 'false' }},
@@ -321,12 +358,25 @@ function customOrderForm() {
                 manual: this.isLandCostManual,
                 creating: this.creating,
                 savedManual: this.savedManual,
-                linkChanged: !this.creating && housingLandLinkChanged(this.savedLink, { type: this.landSourceType, lot: this.selectedLotId, procurement: this.selectedProcurementId }),
+                linkChanged: !this.creating && housingLandLinkChanged(this.savedLink, { type: this.landSourceType, lot: this.selectedLotId, procurement: this.selectedProcurementId, procurementLot: this.selectedProcurementLotId }),
                 refresh: this.refreshLandCost,
                 computed: this.computedLandCost,
                 saved: this.savedLandCost,
-                hasLink: (this.landSourceType === 'project_lot' && !!this.selectedLotId) || (this.landSourceType === 'procurement' && !!this.selectedProcurementId)
+                hasLink: (this.landSourceType === 'project_lot' && !!this.selectedLotId)
+                    || (this.landSourceType === 'procurement' && !!this.selectedProcurementId && !this.procurementLotMissing())
             });
+        },
+
+        // 区画のある土地を選んだのに区画をまだ選んでいない（保存は「区画を選んでください。」で断られるので、「計算できません」は出さない。
+        // Ruling 9）。区画の無い保存済みの注文住宅が同じ仕入れ案件のままなら、区画なしで保存できるので当たらない
+        procurementLotMissing: function() {
+            return this.landSourceType === 'procurement' && this.procurementLots.length > 0
+                && !this.selectedProcurementLotId && !this.showsLegacyNotice();
+        },
+
+        // 区画の無い保存済みの注文住宅が、同じ仕入れ案件のまま（区画を選ばずに保存できる）か
+        showsLegacyNotice: function() {
+            return this.legacyLotlessProcurementId !== '' && String(this.selectedProcurementId) === this.legacyLotlessProcurementId;
         },
 
         landCostShownText: function() {
@@ -337,6 +387,7 @@ function customOrderForm() {
         projects: @json($projectsForJs),
         lots: @json($initialLots),
         procurements: @json($procurementsForJs),
+        procurementLots: @json($initialProcurementLots),
 
         init: function() {
             var self = this;
@@ -344,6 +395,10 @@ function customOrderForm() {
             // （取り直して一覧を描き直すと、選んでいた区画が外れることがある）
             if (self.selectedProjectId && self.lots.length === 0) {
                 self.fetchLots(self.selectedProjectId);
+            }
+            // 土地の区画の一覧に無い区画は選ばない（取られた区画で断られて戻った画面など。サーバも外して渡す。Ruling 11）
+            if (self.selectedProcurementLotId && !self.procurementLots.some(function (lot) { return String(lot.id) === String(self.selectedProcurementLotId); })) {
+                self.selectedProcurementLotId = '';
             }
         },
 
@@ -357,6 +412,8 @@ function customOrderForm() {
             }
             if (this.landSourceType !== 'procurement') {
                 this.selectedProcurementId = null;
+                this.selectedProcurementLotId = '';
+                this.procurementLots = [];
             }
         },
 
@@ -420,8 +477,14 @@ function customOrderForm() {
         onProcurementChange: function() {
             var self = this;
             self.computedLandCost = null;
+            self.selectedProcurementLotId = '';
+            self.procurementLots = [];
             if (!self.selectedProcurementId) return;
-            fetch('{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId, {
+            var url = '{{ url("/api/housing/procurement-info") }}/' + self.selectedProcurementId;
+            @if($isEdit)
+            url += '?custom_order_id={{ (int) $o->id }}';
+            @endif
+            fetch(url, {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(function(res) {
@@ -445,8 +508,37 @@ function customOrderForm() {
                     self.landCost = data.land_cost;
                 }
                 self.autoFilled = true;
+                // 土地の区画（ほかに取られた区画は API が外す。この注文住宅の今の区画は残す）。選べる区画が 1 つなら、それを選ぶ
+                // （利用者が仕入れ案件を選んだときだけ。編集画面・入力エラーで戻った画面を開いたときは選ばない。Ruling 5）
+                self.procurementLots = data.lots || [];
+                if (self.procurementLots.length === 1) {
+                    self.selectedProcurementLotId = String(self.procurementLots[0].id);
+                    self.onProcurementLotChange();
+                }
             })
             .catch(function() { alert('仕入れ案件情報の取得に失敗しました。通信エラーが発生しました。'); });
+        },
+
+        // 区画を選んだら、土地面積と土地原価の自動の値を区画のもの（按分した額）にする（決めたこと 1）
+        onProcurementLotChange: function() {
+            var self = this;
+            self.computedLandCost = null;
+            if (!self.selectedProcurementLotId) return;
+            var lot = null;
+            for (var i = 0; i < self.procurementLots.length; i++) {
+                if (String(self.procurementLots[i].id) === String(self.selectedProcurementLotId)) {
+                    lot = self.procurementLots[i];
+                    break;
+                }
+            }
+            self.computedLandCost = lot && lot.land_cost !== undefined ? lot.land_cost : null;
+            if (lot) {
+                self.landAreaSqm = lot.area_sqm;
+                if (lot.land_cost !== null && !self.isLandCostManual) {
+                    self.landCost = lot.land_cost;
+                }
+                self.autoFilled = true;
+            }
         }
     };
 }
