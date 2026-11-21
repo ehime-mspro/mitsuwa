@@ -354,15 +354,15 @@ EOF
 
 ### Task 10: 本番反映（親の会話が行う。各段で利用者の承認を取る）
 
-- [ ] **Step 1: 13.x の確かめ** — `git merge-base --is-ancestor 13.x HEAD`。進んでいたら枝へ取り込んで全件を流し直す。ほかの会話（ListAgents）に 13.x の早送りと deploy を待ってもらう
-- [ ] **Step 2: 本番の読み取り（承認）** — `ssh mitsuwa-ud@www3586.sakura.ne.jp /bin/sh < 手順ファイル` で `artisan tinker --execute`（php は 8.3 を名指し）: `SHOW CREATE TABLE` の `re_procurement_lots`・`re_contracts`・`hs_properties`・`hs_custom_orders`（索引と外部キーの名前・`re_procurement_lots.id` の型・新しい列が無いこと）／件数だけ: 土地の区画の数・区画のある土地の数・土地に紐づく契約・建売・注文住宅の数（#21 の 1 件を含めて設計書 §5.7 と同じか）／変わるファイルの md5 が今の 13.x と一致／`laravel.log` の日時
-- [ ] **Step 3: SQL（承認）** — `database/sql/2026-11-21-re-procurement-lots-multi.sql` を 1 文ずつ（先頭で `re_contracts.procurement_lot_id` があれば止まる）→ 流したあとの `SHOW CREATE TABLE` が SQL のとおりか確かめる
-- [ ] **Step 4: 早送り（承認）** — main repo で `git checkout 13.x && git merge --ff-only land-multi-lot`
-- [ ] **Step 5: 読み込みの表** — main repo の cwd で `composer dump-autoload --no-dev --optimize`（PHP 8.3。新しいクラス `LandCostAllocation`・`ProcurementLotClaims` が表に入り、作業場所のパスが 0・`vendor/bin/phpunit` が無い）
-- [ ] **Step 6: `./deploy.sh`（承認）**
-- [ ] **Step 7: 反映の後の読み取り（承認）** — 送ったファイルの md5 が手元と一致・コンパイル済みビューの lint INVALID 0・ルート `realestate.procurements.lots.*` が 3 本で `….lot.*` が 0 本・`laravel.log` に反映のあとのエラーが無い
-- [ ] **Step 8: ログインした画面（承認・見るだけ・送信しない）** — 仕入れ案件の一覧・土地の詳細（区画の表と追加のフォーム）・#21 の契約の編集（区画の選択欄・何も選ばれていない・案内の文）・契約の登録（仕入れ案件の選択肢と注記）・建売と注文住宅の登録（区画の選択欄が区画の無い土地では出ない）。`main` の横スクロール 0・コンソールのエラー 0
-- [ ] **Step 9: 記録** — BACKLOG の節に「本番反映」の表、計画の実測記録。push は利用者が「push して」と言ったときだけ
+- [x] **Step 1: 13.x の確かめ** — `git merge-base --is-ancestor 13.x HEAD`。進んでいたら枝へ取り込んで全件を流し直す。ほかの会話（ListAgents）に 13.x の早送りと deploy を待ってもらう
+- [x] **Step 2: 本番の読み取り（承認）** — `ssh mitsuwa-ud@www3586.sakura.ne.jp /bin/sh < 手順ファイル` で `artisan tinker --execute`（php は 8.3 を名指し）: `SHOW CREATE TABLE` の `re_procurement_lots`・`re_contracts`・`hs_properties`・`hs_custom_orders`（索引と外部キーの名前・`re_procurement_lots.id` の型・新しい列が無いこと）／件数だけ: 土地の区画の数・区画のある土地の数・土地に紐づく契約・建売・注文住宅の数（#21 の 1 件を含めて設計書 §5.7 と同じか）／変わるファイルの md5 が今の 13.x と一致／`laravel.log` の日時
+- [x] **Step 3: SQL（承認）** — `database/sql/2026-11-21-re-procurement-lots-multi.sql` を 1 文ずつ（先頭で `re_contracts.procurement_lot_id` があれば止まる）→ 流したあとの `SHOW CREATE TABLE` が SQL のとおりか確かめる
+- [x] **Step 4: 早送り（承認）** — main repo で `git checkout 13.x && git merge --ff-only land-multi-lot`
+- [x] **Step 5: 読み込みの表** — main repo の cwd で `composer dump-autoload --no-dev --optimize`（PHP 8.3。新しいクラス `LandCostAllocation`・`ProcurementLotClaims` が表に入り、作業場所のパスが 0・`vendor/bin/phpunit` が無い）
+- [x] **Step 6: `./deploy.sh`（承認）**
+- [x] **Step 7: 反映の後の読み取り（承認）** — 送ったファイルの md5 が手元と一致・コンパイル済みビューの lint INVALID 0・ルート `realestate.procurements.lots.*` が 3 本で `….lot.*` が 0 本・`laravel.log` に反映のあとのエラーが無い
+- [x] **Step 8: ログインした画面（承認・見るだけ・送信しない）** — 仕入れ案件の一覧・土地の詳細（区画の表と追加のフォーム）・#21 の契約の編集（区画の選択欄・何も選ばれていない・案内の文）・契約の登録（仕入れ案件の選択肢と注記）・建売と注文住宅の登録（区画の選択欄が区画の無い土地では出ない）。`main` の横スクロール 0・コンソールのエラー 0
+- [x] **Step 9: 記録** — BACKLOG の節に「本番反映」の表、計画の実測記録。push は利用者が「push して」と言ったときだけ
 
 ---
 
@@ -375,7 +375,7 @@ EOF
 
 ## 実測記録
 
-（Task 10 の本番反映はそのときに書き足す。台帳は `.superpowers/sdd/2026-11-21-realestate-land-multi-lot/progress.md`）
+（Task 10 の本番反映は末尾の「Task 10 本番反映」。台帳は `.superpowers/sdd/2026-11-21-realestate-land-multi-lot/progress.md`）
 
 ### 進め方（2026-11-21）
 
@@ -470,3 +470,14 @@ EOF
 ### Task 9 Step 4 記録
 
 - `docs/BACKLOG.md` に節（本番未反映）と完了状況の 1 行・`CLAUDE.md` の「不動産 仕入れ案件」の行を「土地の区画〈複数〉」に・`docs/ARCHITECTURE.md` の `re_procurement_lots` の行に区画のステータスと削除の決まり（Task 8 で直した説明に足した）。`docs/RULES.md` は足さない（Ruling 18）
+
+### Task 10 本番反映（2026-11-21）
+
+- 各段で利用者の承認を取った（本番の読み取り・SQL・13.x の早送り・`./deploy.sh`・反映の後の読み取り・ログインした画面）。表は `docs/BACKLOG.md` の節の「本番反映（2026-11-21 実施）」
+- Step 1: 13.x `37a96107` は HEAD の祖先・13.x を動かす会話なし
+- Step 2: 変わる 34 本の md5 が 13.x と一致・新しい 4 本は無い・`AFTER` が指す 3 つの列はある（Task 1 の ⚠ はここで解けた）・索引と外部キーの名前は SQL と合う。**区画は 0 件でなく 2 件**（#9 決済完了・1号地 未販売 ／ #18 査定・検討・1号地 販売中。前の反映のあとに入った）。どちらも販売済でなく紐付けも無いので、集約も選択肢も変わらない
+- Step 3: SQL 6 文 OK・流したあとの定義は SQL のとおり・新しい列は空
+- Step 4・5: main repo の `13.x` を `79b44597` へ早送り（push なし）・`composer dump-autoload --no-dev --optimize` 7,427 クラス（新しい 3 クラス・作業場所のパス 0・`vendor/bin/phpunit` なし）。main repo で作業するため、会話を作業場所から出した（`ExitWorktree(keep)`）
+- Step 6: `./deploy.sh` exit 0（23:33 ごろ）・送ったアプリのファイルは 38 本＋読み込みの表 2 本＋ビルド
+- Step 7: 40 本の md5 が一致・`php -l` ok・コンパイル済みビュー 328 本 / INVALID 0・ルート 502 本で `lots.*` 3 本・`lot.*` 0 本・`laravel.log` は Nov 18 01:45 のまま
+- Step 8: 一覧・#9 と #21 の詳細・#21 の契約（id 8）の編集・契約の登録・建売と注文住宅の登録を、見るだけで確かめた（区画の表・追加のフォームの初期値・選択肢・注記・自動の選択・土地面積・横のはみ出し 0・コンソールのエラー 0）。#21 の土地は区画が無いので、契約の編集画面に区画の選択欄と案内は出ない（区画を足したあとに出る＝設計どおり）
