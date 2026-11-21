@@ -251,7 +251,7 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
         $needle = 'action="' . route('realestate.contracts.update', $contract) . '"';
         $edit = $this->htmlOf($url);
         $form = $this->browserForm($edit, $needle, 'contractEditForm');
-        $this->assertSame(['', (string) $land->id], [$form['fields']['procurement_lot_id'], $form['fields']['procurement_id']], '区画が勝手に選ばれた');
+        $this->assertSame(['', (string) $land->id], [$form['fields']['procurement_lot_id'] ?? null, $form['fields']['procurement_id'] ?? null], '区画が勝手に選ばれた（か区画の欄が送られない）');
         $run = $this->driveAlpine($edit, 'contractEditForm', 'contractEditForm()', '', evaluate: ['data.lotOptions().map(function (o) { return o.id; })', 'data.showsLegacyNotice()']);
         $this->assertSame([[$lot->id], true], $run['evaluated'], '区画の選択欄か案内の文が出ていない');
         $this->assertStringContainsString(self::LEGACY_NOTICE, $edit);
@@ -482,6 +482,26 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
         $this->assertFlash($html, 'success', '契約情報を更新しました。');
         $this->assertSame($lots[2]->id, $contract->fresh()->procurement_lot_id);
         $this->assertSame(['on_sale', 'on_sale', 'sold', 'selling'], $this->statuses($three, ...$lots));
+    }
+
+    /**
+     * 編集画面で区画を選び直すと、土地の契約額に新しい区画の販売価格・原価に新しい区画の按分が入り、その値で保存される
+     * （最後の点検の V2b・V2d: 販売価格の同じ区画どうしの付け替えしか見ておらず、入れ替えを消しても緑だった）。
+     */
+    public function test_choosing_another_lot_on_the_edit_screen_fills_its_amount_and_cost(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $contract = $this->contractOn($land, $first);   // 土地の契約額・原価とも 20,000,000（区画 1 の販売価格と按分）
+        $url = route('realestate.contracts.edit', $contract);
+
+        $form = $this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm', $this->chooseLot($second));
+        $this->assertSame([(string) $second->id, '10000000', '10000000'], $this->lotAndAmounts($form), '区画を選び直しても、新しい区画の販売価格・按分が入らない');
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '契約情報を更新しました。');
+        $contract->refresh();
+        $this->assertSame([$second->id, 10000000, 10000000, 0], [$contract->procurement_lot_id, $contract->contract_amount_land, $contract->cost_amount, $contract->gross_profit]);
     }
 
     public function test_lotless_lands_keep_todays_status_rules(): void

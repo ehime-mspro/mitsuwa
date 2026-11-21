@@ -445,6 +445,26 @@ class ProcurementLotPropertyTest extends HousingScreenTestCase
     }
 
     /**
+     * Ruling 4: 区画のある土地の区画の無い建売（#21 の形）の契約の登録・削除は、土地の区画も仕入れ案件のステータスも動かさない
+     * （区画の無い建売は区画を取っていない。最後の点検の Task 6 の minor）。
+     */
+    public function test_a_contract_of_a_lotless_building_on_a_land_with_lots_moves_nothing(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $this->propertyOn($land, $first, ['property_code' => 'HS-002', 'property_name' => '区画 1 の建売']);
+        $this->registerContract(HsProperty::where('property_code', 'HS-002')->sole());
+        $this->assertSame(['sold', 'on_sale', 'selling'], $this->statuses($land, $first, $second), 'テストの前提');
+        $lotless = $this->propertyOn($land, null, ['property_code' => 'HS-001', 'property_name' => '区画なしの建売']);
+
+        $this->registerContract($lotless);
+        $this->assertSame(['sold', 'on_sale', 'selling'], $this->statuses($land, $first, $second), '区画の無い建売の契約で、区画か仕入れ案件のステータスが動いた');
+
+        $this->destroyContract($lotless);
+        $this->assertSame(['sold', 'on_sale', 'selling'], $this->statuses($land, $first, $second), '区画の無い建売の契約の削除で、区画か仕入れ案件のステータスが動いた');
+        $this->assertNull($lotless->fresh()->re_procurement_lot_id);
+    }
+
+    /**
      * 建売の契約で土地の全区画が売れて仕入れ案件が「販売済」になっても、その建売の編集画面はそのまま保存でき、選択肢に今の仕入れ案件が残る
      * （建売の編集画面の土地は読み取り専用。新しい建売には販売済の土地を出さない）
      */

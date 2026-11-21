@@ -120,7 +120,12 @@ class CustomOrderScreensTest extends HousingScreenTestCase
     public function test_every_looped_option_of_a_modelled_select_is_selected_by_the_model(): void
     {
         $checked = 0;
-        foreach (['housing/properties/_form.blade.php', 'housing/custom-orders/_form.blade.php'] as $view) {
+        // 不動産の契約の登録・編集と注文住宅の契約の編集も同じ形（土地の区画の選択欄。最後の点検の V1c: 契約の編集画面の :selected を
+        // 消しても緑だった＝実駆動の道具は x-model の値をそのまま選ぶので、構造で見るしかない）
+        foreach ([
+            'housing/properties/_form.blade.php', 'housing/custom-orders/_form.blade.php', 'housing/contracts/edit-custom-order.blade.php',
+            'realestate/contracts/create.blade.php', 'realestate/contracts/edit.blade.php',
+        ] as $view) {
             $source = file_get_contents(resource_path('views/' . $view));
             preg_match_all('/<select\b[^>]*\bx-model="([^"]+)"[^>]*>(.*?)<\/select>/s', $source, $selects, PREG_SET_ORDER);
             foreach ($selects as [, $model, $body]) {
@@ -132,8 +137,9 @@ class CustomOrderScreensTest extends HousingScreenTestCase
                     "{$view} の x-model=\"{$model}\" の選択肢に :selected が無い");
             }
         }
-        // 分譲地・区画・仕入れ案件（2 画面 × 3）＋ 土地の区画（建売・注文住宅の 2 画面 × 1）
-        $this->assertSame(8, $checked, '分譲地・区画・仕入れ案件・土地の区画の選択欄を拾えていない');
+        // 分譲地・区画・仕入れ案件（2 画面 × 3）＋ 土地の区画（建売・注文住宅・注文住宅の契約の編集の 3 画面 × 1）
+        // ＋ 不動産の契約の登録・編集（2 画面 × 土地の区画と分譲地の区画の 2）
+        $this->assertSame(13, $checked, '分譲地・区画・仕入れ案件・土地の区画の選択欄を拾えていない');
     }
 
     // ============================================================

@@ -72,6 +72,35 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $this->assertSame(LotStatus::Sold, $this->lotStatus($lotB));
     }
 
+    /**
+     * 契約の付け替え: 区画の無い土地 ↔ 区画のある土地。区画の無い土地は今どおり販売済／販売中にし、区画のある土地は区画から集約する
+     * （update() の settleProcurement() の分かれ目。最後の点検の Task 4 の minor: 両方の仕入れ案件のステータスを直接見る）。
+     */
+    public function test_switching_between_a_lotless_land_and_a_land_with_lots_moves_both_statuses(): void
+    {
+        $lotless = $this->landProcurement(['procurement_code' => 'RE-PRC-001', 'property_name' => '区画なしの土地']);
+        $lotted = $this->landProcurement(['procurement_code' => 'RE-PRC-002', 'property_name' => '区画のある土地']);
+        $lot = $this->procurementLot($lotted);
+        $other = $this->procurementLot($lotted, ['lot_number' => 2]);
+        $statuses = fn () => [$lotless->fresh()->status->value, $lotted->fresh()->status->value, $this->lotStatus($lot)->value, $this->lotStatus($other)->value];
+
+        $this->actingAs($this->user)->post('/realestate/contracts', $this->contractPayload($lotless->id, null, '区画なしの土地'))
+            ->assertSessionHasNoErrors();
+        $contract = ReContract::firstOrFail();
+        $this->assertSame(['sold', 'selling', 'on_sale', 'on_sale'], $statuses(), 'テストの前提: 区画の無い土地が販売済になっていない');
+
+        // 区画の無い土地 → 区画のある土地の区画 1
+        $this->actingAs($this->user)->put("/realestate/contracts/{$contract->id}", $this->contractPayload($lotted->id, $lot, '区画のある土地'))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(['selling', 'selling', 'sold', 'on_sale'], $statuses(), '区画の無い土地が販売中に戻らない（か区画のある土地が区画から集約されない）');
+
+        // 区画のある土地の区画 1 → 区画の無い土地
+        $this->actingAs($this->user)->put("/realestate/contracts/{$contract->id}", $this->contractPayload($lotless->id, null, '区画なしの土地'))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(['sold', 'selling', 'on_sale', 'on_sale'], $statuses(), '区画の無い土地が販売済にならない（か区画 1 が販売中に戻らない）');
+        $this->assertNull($contract->fresh()->procurement_lot_id);
+    }
+
     public function test_a_land_without_a_lot_is_untouched(): void
     {
         $procurement = $this->landProcurement();
