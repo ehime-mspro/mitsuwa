@@ -303,9 +303,15 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
             [$this->apiResponse(route('api.realestate.procurement-cost', $single))]);
         $this->assertSame($expectedLand === '' ? '25000000' : $expectedLand, $before['fields']['contract_amount_land'], 'テストの前提: 区画 1 つの土地で土地の契約額が入っていない');
 
-        $after = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm',
-            $chooseSingle . $typed . ' data.procurementId = "' . $two->id . '"; data.onProcurementChange();' . $this->chooseLot($noPrice),
-            [$this->apiResponse(route('api.realestate.procurement-cost', $single)), $this->apiResponse(route('api.realestate.procurement-cost', $two))]);
+        $switchTo = $chooseSingle . $typed . ' data.procurementId = "' . $two->id . '"; data.onProcurementChange();';
+        $responses = [$this->apiResponse(route('api.realestate.procurement-cost', $single)), $this->apiResponse(route('api.realestate.procurement-cost', $two))];
+
+        // 替えた直後（選べる区画が 2 つなので区画はまだ選ばない）
+        $switched = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm', $switchTo, $responses);
+        $this->assertSame(['', $expectedLand, ''], $this->lotAndAmounts($switched),
+            '土地を替えた直後に、前の土地の区画の金額が残っている（か手で打った値が消えた）');
+
+        $after = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm', $switchTo . $this->chooseLot($noPrice), $responses);
 
         $this->assertSame([(string) $noPrice->id, $expectedLand, ''], $this->lotAndAmounts($after),
             '土地を替えて販売価格の無い区画を選んでも、前の土地の区画の金額が残っている（か手で打った値が消えた）');
