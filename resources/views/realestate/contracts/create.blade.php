@@ -449,6 +449,11 @@ function contractForm() {
         procurementLandOnly: @json($procurementLandOnly),
         procurementLotOptions: @json($procurementLotOptions),
         costAmount: {{ \Illuminate\Support\Js::from((string) old("cost_amount", "")) }},
+        // 区画を選んで自動で入れた値（土地の契約額・原価。文字か null）。欄がこの値のままなら、区画を外す・選び直すときに空にする
+        // （別の区画・土地の金額を、自動で入った値に見える形で残さない。手で打った値は残す。最後の点検の I1）。
+        // 初めの値は、入力エラーで戻った画面・編集画面で選んでいる区画の値（一覧に無くなった区画の値も。サーバが渡す。I2）
+        autoLandAmount: @json($procurementLotAuto['land']),
+        autoCostAmount: @json($procurementLotAuto['cost']),
         grossProfit: null,
         profitRate: null,
         procCost: null,
@@ -489,12 +494,22 @@ function contractForm() {
             return lot && lot.cost_amount !== null ? String(lot.cost_amount) : '';
         },
 
-        // 区画を選んだら、土地の契約額に販売価格、原価に按分した原価を入れる（空の値は入れず、今の値のまま。決めたこと 1）
+        // 自動で入れた値のままの欄を空にする（手で打った値は残す。I1）
+        clearAutoAmounts: function() {
+            if (this.autoLandAmount !== null && String(this.amountLand) === this.autoLandAmount) { this.amountLand = ''; }
+            if (this.autoCostAmount !== null && String(this.costAmount) === this.autoCostAmount) { this.costAmount = ''; }
+            this.autoLandAmount = null;
+            this.autoCostAmount = null;
+        },
+
+        // 区画を選んだら、土地の契約額に販売価格、原価に按分した原価を入れる（決めたこと 1）。
+        // 前の区画が自動で入れた値のままの欄は先に空にする（区画を外したとき・選んだ区画の販売価格や按分が空のときに、
+        // 前の区画・土地の値を残さない。手で打った値は今の値のまま。I1）
         applyLot: function() {
+            this.clearAutoAmounts();
             var lot = this.selectedLot();
-            if (!lot) { return; }
-            if (lot.selling_price !== null) { this.amountLand = String(lot.selling_price); }
-            if (lot.cost_amount !== null) { this.costAmount = String(lot.cost_amount); }
+            if (lot && lot.selling_price !== null) { this.amountLand = String(lot.selling_price); this.autoLandAmount = this.amountLand; }
+            if (lot && lot.cost_amount !== null) { this.costAmount = String(lot.cost_amount); this.autoCostAmount = this.costAmount; }
             this.calcProfit();
         },
 
@@ -509,8 +524,9 @@ function contractForm() {
             var options = this.lotOptions();
             if (options.length === 1) {
                 this.procurementLotId = String(options[0].id);
-                this.applyLot();
             }
+            // 区画を選ばなくても呼ぶ（前の土地の区画が自動で入れた値を外す。I1）
+            this.applyLot();
         },
 
         // 建物欄を出すかは紐づく仕入れ案件の物件種別で決まる（設計書 §4.2）。
@@ -602,6 +618,8 @@ function contractForm() {
             this.amountBuildingIncl = '';
             this.taxAmount = '';
             this.costAmount = '';
+            this.autoLandAmount = null;
+            this.autoCostAmount = null;
             this.grossProfit = null;
             this.profitRate = null;
             this.procCost = null;
@@ -713,6 +731,12 @@ function contractForm() {
         },
 
         init: function() {
+            // 一覧に無い区画は選ばない（取られた区画で断られて戻った画面。建売・注文住宅と同じ。Ruling 11・14）。
+            // その区画が自動で入れた値のままの欄も空にする（値はサーバが autoLandAmount・autoCostAmount で渡す。I2）
+            if (this.procurementLotId !== '' && !this.selectedLot()) {
+                this.procurementLotId = '';
+                this.clearAutoAmounts();
+            }
             this.refreshInclusive();
             this.calcProfit();
         }

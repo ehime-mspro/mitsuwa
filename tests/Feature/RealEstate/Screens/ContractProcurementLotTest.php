@@ -3,10 +3,12 @@
 namespace Tests\Feature\RealEstate\Screens;
 
 use App\Enums\LotStatus;
+use App\Models\HsProperty;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
 use App\Models\ReProcurementLot;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * 不動産の契約（仕入れ系）で土地の区画を選ぶ（設計書 §5.3〜§5.6）。
@@ -56,6 +58,27 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
     private function createUrl(): string
     {
         return route('realestate.contracts.create');
+    }
+
+    /** その区画に建つ建売（区画を取る。契約の前から） */
+    private function buildingOn(ReProcurement $land, ReProcurementLot $lot, string $code = 'HS-LOT-001', string $name = '区画の建売'): HsProperty
+    {
+        return HsProperty::create([
+            'property_code' => $code, 'property_name' => $name, 'status' => 'construction', 'address' => '松山市石井町1-2-3',
+            'land_source_type' => 'procurement', 're_procurement_id' => $land->id, 're_procurement_lot_id' => $lot->id,
+            'created_by' => $this->user->id,
+        ]);
+    }
+
+    private function editNeedle(ReContract $contract): string
+    {
+        return 'action="' . route('realestate.contracts.update', $contract) . '"';
+    }
+
+    /** @return array{0: mixed, 1: mixed, 2: mixed} 送る区画・土地の契約額・原価（区画の欄が送られなければ null） */
+    private function lotAndAmounts(array $form): array
+    {
+        return [$form['fields']['procurement_lot_id'] ?? null, $form['fields']['contract_amount_land'] ?? null, $form['fields']['cost_amount'] ?? null];
     }
 
     /**
@@ -248,6 +271,114 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
 
         $run = $this->driveAlpine($this->htmlOf($url), 'contractEditForm', 'contractEditForm()', '', evaluate: ['data.showsLegacyNotice()']);
         $this->assertSame([false], $run['evaluated'], '区画を選んだあとも案内の文が出ている');
+    }
+
+    // ============================================================
+    // 区画が自動で入れた値（最後の点検の I1・I2）
+    // ============================================================
+
+    /** 選び直しの前と後: 自動で入った値のまま／手で打った値（手で打った値は残す。決めたこと 1 の「今の値のまま」は手入力のため） */
+    public static function typedLandAmounts(): array
+    {
+        return [
+            '自動で入った値のまま' => ['', ''],
+            '手で打った土地の契約額' => [' data.amountLand = "21000000";', '21000000'],
+        ];
+    }
+
+    /**
+     * I1: 区画が 1 つの土地（自動で区画が選ばれ、土地の契約額に 25,000,000 が入る）から、販売価格の無い区画のある土地に替えて
+     * その区画を選ぶと、前の土地の区画の金額を残さない（別の土地の金額が、自動で入った値に見える形で保存されないように）。
+     */
+    #[DataProvider('typedLandAmounts')]
+    public function test_switching_the_land_drops_the_amount_the_previous_lot_filled_in(string $typed, string $expectedLand): void
+    {
+        $single = $this->landWithCost(['procurement_code' => 'RE-PRC-001', 'property_name' => '区画 1 つの土地']);
+        $this->procurementLot($single);
+        [$two, , $noPrice] = $this->twoLotLand(['procurement_code' => 'RE-PRC-002', 'property_name' => '区画 2 つの土地'], null);
+        $html = $this->htmlOf($this->createUrl());
+        $chooseSingle = 'data.contractType = "procurement_land"; data.onTypeChange(); data.procurementId = "' . $single->id . '"; data.onProcurementChange();';
+
+        $before = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm', $chooseSingle . $typed,
+            [$this->apiResponse(route('api.realestate.procurement-cost', $single))]);
+        $this->assertSame($expectedLand === '' ? '25000000' : $expectedLand, $before['fields']['contract_amount_land'], 'テストの前提: 区画 1 つの土地で土地の契約額が入っていない');
+
+        $after = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm',
+            $chooseSingle . $typed . ' data.procurementId = "' . $two->id . '"; data.onProcurementChange();' . $this->chooseLot($noPrice),
+            [$this->apiResponse(route('api.realestate.procurement-cost', $single)), $this->apiResponse(route('api.realestate.procurement-cost', $two))]);
+
+        $this->assertSame([(string) $noPrice->id, $expectedLand, ''], $this->lotAndAmounts($after),
+            '土地を替えて販売価格の無い区画を選んでも、前の土地の区画の金額が残っている（か手で打った値が消えた）');
+    }
+
+    /**
+     * I1（編集画面）: 今の区画（販売価格 20,000,000）が入れた値のままの土地の契約額は、販売価格の無い区画を選び直すと空にする。
+     * 原価は按分できない土地なので区画の値ではない（保存した値＝手で打った値として残す）。
+     */
+    public function test_choosing_a_lot_without_a_price_on_the_edit_screen_drops_the_amount_of_the_current_lot(): void
+    {
+        [$land, $first, $noPrice] = $this->twoLotLand([], null);
+        $contract = $this->contractOn($land, $first);
+
+        $form = $this->browserForm($this->htmlOf(route('realestate.contracts.edit', $contract)), $this->editNeedle($contract), 'contractEditForm', $this->chooseLot($noPrice));
+
+        $this->assertSame([(string) $noPrice->id, '', '20000000'], $this->lotAndAmounts($form),
+            '販売価格の無い区画を選んでも、今の区画の販売価格が土地の契約額に残っている（か原価が消えた）');
+    }
+
+    /**
+     * I2・Ruling 14（登録画面）: 「取られている」で断られて戻った画面は、取られた区画を選んだままにせず、
+     * その区画が自動で入れた値も残さない（手で打った値は残す）。残った区画を選び直して登録できる。
+     */
+    #[DataProvider('typedLandAmounts')]
+    public function test_a_refused_lot_is_not_kept_on_the_returned_screen(string $typed, string $expectedLand): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $url = $this->createUrl();
+        $stale = $this->completed($this->createForm($this->htmlOf($url), $land, $this->chooseLot($first) . $typed), '佐藤');
+        $this->assertSame([(string) $first->id, $expectedLand === '' ? '20000000' : $expectedLand, '20000000'], $this->lotAndAmounts($stale), 'テストの前提');
+        $this->contractOn($land, $first);   // 開いたあとで、ほかの人が区画 1 の契約を登録した
+
+        $html = $this->landed($this->submit($stale, $url));
+
+        $this->assertErrorItem($html, 'この区画（1号地）は契約「勝山の土地（山田 太郎 様）」に紐づいています。ほかの区画を選んでください。');
+        // 戻った画面はそのまま組める（x-model の値が選択肢に無い＝ブラウザでは区画が空に見え、取られた区画の金額と原価が残る形にしない）
+        $again = $this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm');
+        $this->assertSame(['', $expectedLand, ''], $this->lotAndAmounts($again), '戻った画面が取られた区画を選んだまま（か、その区画の金額・原価を残している）');
+
+        // 残った区画を選び直して登録できる
+        $html = $this->landed($this->submit($this->browserForm($html, 'action="' . route('realestate.contracts.store') . '"', 'contractForm', $this->chooseLot($second)), $url));
+        $this->assertFlash($html, 'success', '契約を登録しました。');
+        $saved = ReContract::where('procurement_lot_id', $second->id)->sole();
+        $this->assertSame([10000000, 10000000], [$saved->contract_amount_land, $saved->cost_amount]);
+    }
+
+    /**
+     * I2（編集画面・#21 の形）: 区画の無い契約で区画を選び、その区画が取られていて断られて戻った画面は、取られた区画を外し、
+     * その区画の金額と原価も外す（「区画なしのまま保存します」の案内が出たまま、取られた区画の金額と原価で保存されないように）。
+     * 付け替え（新しく選ぶ区画）が取られていれば今どおり断る（Ruling 15 で refusal() を false にしても）。
+     */
+    public function test_a_legacy_contract_does_not_keep_a_refused_lot_on_the_returned_screen(): void
+    {
+        [$land, , $second] = $this->twoLotLand();
+        $contract = $this->contractOn($land, null);   // 区画の無い契約（#21）。土地の契約額・原価とも 20,000,000
+        $url = route('realestate.contracts.edit', $contract);
+        $stale = $this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm', $this->chooseLot($second));
+        $this->assertSame([(string) $second->id, '10000000', '10000000'], $this->lotAndAmounts($stale), 'テストの前提');
+        $this->buildingOn($land, $second, 'HS-LOT-001', '区画 2 の建売');   // 開いたあとで、建売が区画 2 を取った
+
+        $html = $this->landed($this->submit($stale, $url));
+
+        $this->assertErrorItem($html, 'この区画（2号地）は建売物件「HS-LOT-001 区画 2 の建売」に紐づいています。ほかの区画を選んでください。');
+        $this->assertSame([null, 20000000, 20000000], [$contract->fresh()->procurement_lot_id, $contract->fresh()->contract_amount_land, $contract->fresh()->cost_amount]);
+        $again = $this->browserForm($html, $this->editNeedle($contract), 'contractEditForm');
+        $this->assertSame(['', '', ''], $this->lotAndAmounts($again), '戻った画面が取られた区画（か、その区画の金額・原価）を残している');
+        $this->assertStringContainsString(self::LEGACY_NOTICE, $html);
+
+        // そのまま送っても、取られた区画の金額と原価で「区画なし」のまま保存されない（金額が空で止まる）
+        $html = $this->landed($this->submit($again, $url));
+        $this->assertErrorItem($html, trans('validation.required', ['attribute' => '契約額（土地）']));
+        $this->assertSame([null, 20000000, 20000000], [$contract->fresh()->procurement_lot_id, $contract->fresh()->contract_amount_land, $contract->fresh()->cost_amount]);
     }
 
     // ============================================================

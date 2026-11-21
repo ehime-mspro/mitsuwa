@@ -144,8 +144,11 @@ class ReContractController extends Controller
         //    選んでいた区画が送られず、分譲地を選び直すまで区画を選べない
         $lots = $this->lotOptions(old('project_id'));
 
+        // 入力エラーで戻った画面で選んでいた土地の区画が自動で入れる値（一覧に無くなった区画も。画面の JS が外す。I1・I2）
+        $procurementLotAuto = $this->procurementLotAuto(old('procurement_id'), old('procurement_lot_id'));
+
         return view('realestate.contracts.create', compact(
-            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotOptions', 'lots'
+            'procurements', 'projects', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotOptions', 'lots', 'procurementLotAuto'
         ));
     }
 
@@ -321,9 +324,15 @@ class ReContractController extends Controller
 
         $staffUsers = User::assignableWith($contract->staff_user_id);
 
+        // 今の区画（入力エラーで戻った画面は選んでいた区画）が自動で入れる値（一覧に無くなった区画も。画面の JS が外す。I1・I2）
+        $procurementLotAuto = $this->procurementLotAuto(
+            old('procurement_id', $contract->procurement_id),
+            old('procurement_lot_id', $contract->procurement_lot_id),
+        );
+
         return view('realestate.contracts.edit', compact(
             'contract', 'procurements', 'projects', 'lots', 'buyers', 'staffUsers', 'procurementLandOnly', 'procurementLotOptions',
-            'legacyLotlessProcurementId'
+            'legacyLotlessProcurementId', 'procurementLotAuto'
         ));
     }
 
@@ -634,6 +643,43 @@ class ReContractController extends Controller
             ->values();
 
         return [$procurements, $options];
+    }
+
+    /**
+     * 選んでいる土地の区画（入力エラーで戻った画面・編集画面）を選んだときに自動で入る値（土地の契約額・原価。文字か null）。
+     * 画面の JS は、欄がこの値のままなら、区画を外す・選び直すときに空にする（別の区画・土地の金額を、自動で入った値に
+     * 見える形で残さない。手で打った値は残す。最後の点検の I1）。一覧に無くなった区画（取られた区画で断られて戻った画面）の
+     * 値もここで渡す（JS の一覧に無いので JS では求められない。init() がその区画を外すときに一緒に空にする。I2・Ruling 14）。
+     * その仕入れ案件の区画でなければ（手で組んだ送信・区画の無い案件）どちらも null。
+     *
+     * @return array{land: ?string, cost: ?string}
+     */
+    private function procurementLotAuto(mixed $procurementId, mixed $lotId): array
+    {
+        $procurementId = $this->idOf($procurementId);
+        $lotId = $this->idOf($lotId);
+        $procurement = $procurementId === null || $lotId === null ? null : ReProcurement::with(['lots', 'costs'])->find($procurementId);
+        $lot = $procurement?->lots->firstWhere('id', $lotId);
+        if ($lot === null) {
+            return ['land' => null, 'cost' => null];
+        }
+
+        $cost = $procurement->landCostForLot((int) $lot->id);
+
+        return [
+            'land' => $lot->selling_price !== null ? (string) $lot->selling_price : null,
+            'cost' => $cost !== null ? (string) $cost : null,
+        ];
+    }
+
+    /** int と数字だけの文字を id に（それ以外・空は null。old() は手で組んだ送信の値も返す） */
+    private function idOf(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        return is_string($value) && $value !== '' && ctype_digit($value) ? (int) $value : null;
     }
 
     /**
