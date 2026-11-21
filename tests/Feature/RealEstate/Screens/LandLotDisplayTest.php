@@ -94,12 +94,13 @@ class LandLotDisplayTest extends RealEstateScreenTestCase
     public function test_the_housing_screens_show_the_lot_area_of_the_land(): void
     {
         $land = $this->landProcurement();
-        $this->procurementLot($land);
+        $lot = $this->procurementLot($land);
         $noLot = $this->landProcurement(['procurement_code' => 'RE-PRC-002', 'property_name' => '区画なしの土地']);
 
+        // 建売は建売の区画を出す（仕入れ案件の区画ではない。区画の無い建売は区画を出さない）
         $property = HsProperty::create([
             'property_code' => 'HS-001', 'property_name' => '平井 建売 1', 'status' => 'design', 'address' => '愛媛県松山市平井町1-3',
-            'land_source_type' => 'procurement', 're_procurement_id' => $land->id, 'created_by' => $this->user->id,
+            'land_source_type' => 'procurement', 're_procurement_id' => $land->id, 're_procurement_lot_id' => $lot->id, 'created_by' => $this->user->id,
         ]);
         $order = HsCustomOrder::create([
             'order_code' => 'CO-001', 'order_name' => '山田邸 新築工事', 'status' => 'consultation', 'customer_name' => '山田 太郎',
@@ -110,6 +111,8 @@ class LandLotDisplayTest extends RealEstateScreenTestCase
         $this->assertStringContainsString('区画 1号地 132.69㎡（40.13坪）', $this->htmlOf(route('housing.properties.show', $property)));
         $this->assertStringContainsString('区画 1号地 132.69㎡（40.13坪）', $this->htmlOf(route('housing.custom-orders.show', $order)));
 
+        $property->update(['re_procurement_lot_id' => null]);
+        $this->assertStringNotContainsString('区画 1号地', $this->htmlOf(route('housing.properties.show', $property)), '区画のある土地の区画の無い建売に区画を出している');
         $property->update(['re_procurement_id' => $noLot->id]);
         $order->update(['re_procurement_id' => $noLot->id]);
         $this->assertStringNotContainsString('区画 1号地', $this->htmlOf(route('housing.properties.show', $property)));

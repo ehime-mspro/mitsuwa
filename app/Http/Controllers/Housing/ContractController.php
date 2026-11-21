@@ -26,7 +26,7 @@ class ContractController extends Controller
                 ->with('error', 'この物件は既に契約済みです。');
         }
 
-        $property->load(['projectLot.project', 'procurement.costs']);
+        $property->load(['projectLot.project', 'procurement.costs', 'procurementLot']);
 
         // デフォルト値の準備
         $defaults = $this->getContractDefaults($property);
@@ -223,12 +223,13 @@ class ContractController extends Controller
     }
 
     /**
-     * 契約登録時: 分譲地区画を「成約」に更新
+     * 契約登録時: 分譲地区画・土地の区画を「成約」に更新
      */
     private function updateLotStatusOnSold(HsProperty $property): void
     {
-        // 土地の仕入れ案件の区画（無ければ何もしない）
-        ReProcurementLot::markSoldFor($property->re_procurement_id ? (int) $property->re_procurement_id : null);
+        // 土地の仕入れ案件の区画: その建売の区画だけを成約にし、仕入れ案件のステータスを区画から集約する（設計書 §5.4）。
+        // 区画の無い建売（区画の無い土地・#21 の形）は何もしない
+        ReProcurementLot::markSold($property->re_procurement_lot_id ? (int) $property->re_procurement_lot_id : null);
 
         if ($property->re_project_lot_id) {
             $lot = $property->projectLot;
@@ -240,12 +241,12 @@ class ContractController extends Controller
     }
 
     /**
-     * 契約削除時: 分譲地区画を「販売中」に戻す
+     * 契約削除時: 分譲地区画・土地の区画を「販売中」に戻す
      */
     private function updateLotStatusOnUnsold(HsProperty $property): void
     {
-        // 土地の仕入れ案件の区画（無ければ何もしない）
-        ReProcurementLot::markOnSaleFor($property->re_procurement_id ? (int) $property->re_procurement_id : null);
+        // 土地の仕入れ案件の区画: その建売の区画だけを販売中にし、仕入れ案件のステータスを区画から集約する（区画の無い建売は何もしない）
+        ReProcurementLot::markOnSale($property->re_procurement_lot_id ? (int) $property->re_procurement_lot_id : null);
 
         if ($property->re_project_lot_id) {
             $lot = $property->projectLot;

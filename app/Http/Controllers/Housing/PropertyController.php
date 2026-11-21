@@ -15,11 +15,13 @@ use App\Support\JapanTime;
 use App\Support\ProcurementLotClaims;
 use App\Support\Settings;
 use App\Models\ReProcurement;
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class PropertyController extends Controller
 {
@@ -33,7 +35,7 @@ class PropertyController extends Controller
      */
     public function index(Request $request)
     {
-        $query = HsProperty::with(['contract', 'projectLot.project', 'procurement']);
+        $query = HsProperty::with(['contract', 'projectLot.project', 'procurement', 'procurementLot']);
 
         // フィルター: ステータス（デフォルトは「成約以外」= 契約レコードが無い物件）
         $statusFilter = $request->input('status', 'non_sold');
@@ -85,25 +87,16 @@ class PropertyController extends Controller
             ];
         }
 
-        // 仕入れ案件一覧（決済完了以降、セレクト用）
-        $procurements = ReProcurement::whereIn('status', ['settled', 'selling'])
-            ->orderByDesc('id')
-            ->get(['id', 'procurement_code', 'property_name', 'address']);
-        $procurementsForJs = [];
-        foreach ($procurements as $pr) {
-            $procurementsForJs[] = [
-                'id'      => $pr->id,
-                'code'    => $pr->procurement_code,
-                'name'    => $pr->property_name,
-                'address' => $pr->address,
-            ];
-        }
+        // 仕入れ案件一覧（決済完了以降、セレクト用。全区画がほかに取られた土地は出さない）
+        $procurementsForJs = $this->procurementOptions(null);
 
         // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id'), null);
+        // 土地の区画も同じ（入力エラーで戻った画面は選んでいた仕入れ案件の区画の一覧。決めたこと 8）
+        $procurementLotSelection = $this->initialProcurementLotSelection(old('re_procurement_id'), null);
         $computedLandCost = $this->computedLandCost(null);
 
-        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost'));
+        return view('housing.properties.create', compact('projectsForJs', 'procurementsForJs', 'lotSelection', 'procurementLotSelection', 'computedLandCost'));
     }
 
     /**
@@ -136,7 +129,8 @@ class PropertyController extends Controller
         $property->load([
             'contract.createdBy',
             'projectLot.project',
-            'procurement.lot',
+            'procurement',
+            'procurementLot',
             'files.uploadedByUser',
             'createdBy',
             'updatedBy',
@@ -184,7 +178,7 @@ class PropertyController extends Controller
      */
     public function edit(HsProperty $property)
     {
-        $property->load(['projectLot.project', 'procurement']);
+        $property->load(['projectLot.project', 'procurement', 'procurementLot']);
 
         // 分譲地一覧
         $projects = ReProject::orderByDesc('id')->get(['id', 'project_code', 'project_name']);
@@ -198,23 +192,14 @@ class PropertyController extends Controller
         }
 
         // 仕入れ案件一覧
-        $procurements = ReProcurement::whereIn('status', ['settled', 'selling'])
-            ->orderByDesc('id')
-            ->get(['id', 'procurement_code', 'property_name', 'address']);
-        $procurementsForJs = [];
-        foreach ($procurements as $pr) {
-            $procurementsForJs[] = [
-                'id'      => $pr->id,
-                'code'    => $pr->procurement_code,
-                'name'    => $pr->property_name,
-                'address' => $pr->address,
-            ];
-        }
+        $procurementsForJs = $this->procurementOptions($property);
 
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id', $property->re_project_lot_id), $property->id);
+        // 編集画面の土地は読み取り専用（決めたこと 2）。区画の一覧は保存済みの仕入れ案件のもの
+        $procurementLotSelection = $this->initialProcurementLotSelection(old('re_procurement_id', $property->re_procurement_id), $property);
         $computedLandCost = $this->computedLandCost($property);
 
-        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'computedLandCost'));
+        return view('housing.properties.edit', compact('property', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'procurementLotSelection', 'computedLandCost'));
     }
 
     /**
@@ -468,6 +453,14 @@ class PropertyController extends Controller
         $statuses = implode(',', array_column(HousingPropertyStatus::cases(), 'value'));
         $sourceTypes = implode(',', array_column(HousingLandSourceType::cases(), 'value'));
 
+        // 土地の区画（設計書 §5.3）。土地元が仕入れ案件のときだけ見る（ほかの種別では保存しない＝setLandSourceForeignKeys() が空にする）。
+        // ⚠ 入力チェックの前に読むので、数字の文字か整数のときだけ使う（配列などは 0＝区画の無い案件として扱い、入力チェックが断る。Bug #121）
+        $isProcurement = $request->input('land_source_type') === HousingLandSourceType::Procurement->value;
+        $chosen = $request->input('re_procurement_id');
+        $chosenId = is_int($chosen) || (is_string($chosen) && $chosen !== '' && ctype_digit($chosen)) ? (int) $chosen : 0;
+        // 区画のある土地では必須（区画の無い保存済みの建売＝#21 の形は、同じ仕入れ案件のままなら選ばずに保存できる。requiresLot()）
+        $lotRequired = $isProcurement && ProcurementLotClaims::requiresLot($chosen, $current);
+
         return Validator::make($request->all(), [
             'property_name'                 => 'required|string|max:100',
             'status'                        => "required|in:{$statuses}",
@@ -475,6 +468,10 @@ class PropertyController extends Controller
             // 土地の種別を選んだのに紐付け先が空の保存は断る（D1。画面の選択が壊れても空で保存されないように）
             're_project_lot_id'             => 'nullable|required_if:land_source_type,project_lot|exists:re_project_lots,id',
             're_procurement_id'             => 'nullable|required_if:land_source_type,procurement|exists:re_procurements,id',
+            // 区画は選んだ仕入れ案件の区画だけ（別の土地の区画・無い区画は断る。Review Focus 1）
+            're_procurement_lot_id'         => $isProcurement
+                ? ['nullable', 'integer', Rule::requiredIf($lotRequired), Rule::exists('re_procurement_lots', 'id')->where('procurement_id', $chosenId)]
+                : 'exclude',
             'postal_code'                   => 'nullable|string|max:10',
             'address'                       => 'required|string|max:200',
             'land_area_sqm'                 => 'nullable|numeric|min:0|max:99999999.99',
@@ -494,13 +491,26 @@ class PropertyController extends Controller
         ], [
             're_project_lot_id.required_if' => '土地紐づけ種別が分譲地区画のときは、区画を選んでください。',
             're_procurement_id.required_if' => '土地紐づけ種別が仕入れ案件のときは、仕入れ案件を選んでください。',
+            're_procurement_lot_id.required' => '区画を選んでください。',
         ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」「建築原価」）
             'address'       => '所在地',
             'building_cost' => '建築費',
-        ])->after(function ($validator) use ($current, $request) {
+        ])->after(function ($validator) use ($current, $request, $isProcurement) {
             if ($current?->refusesLandChange($request->all())) {
                 $validator->errors()->add('land_source_type', HsProperty::LAND_LOCKED_BY_CONTRACT);
+            }
+
+            // 1 つの区画に付けられる建売・契約・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。
+            // 建売は契約の前から区画を取る（$selfTakes = true）。区画や仕入れ案件にほかの誤りがあれば見ない
+            if (! $isProcurement
+                || $validator->errors()->has('re_procurement_lot_id')
+                || $validator->errors()->has('re_procurement_id')) {
+                return;
+            }
+            $refusal = ProcurementLotClaims::refusal($request->input('re_procurement_lot_id'), $current, true);
+            if ($refusal !== null) {
+                $validator->errors()->add('re_procurement_lot_id', $refusal);
             }
         })->validate();
     }
@@ -527,11 +537,14 @@ class PropertyController extends Controller
         $type = old('land_source_type', $property?->land_source_type?->value);
 
         return HousingLandCost::forLink(is_string($type) ? $type : null,
-            old('re_project_lot_id', $property?->re_project_lot_id), old('re_procurement_id', $property?->re_procurement_id));
+            old('re_project_lot_id', $property?->re_project_lot_id), old('re_procurement_id', $property?->re_procurement_id),
+            old('re_procurement_lot_id', $property?->re_procurement_lot_id));
     }
 
     /**
-     * 紐づけ種別に応じてFKを設定/クリア
+     * 紐づけ種別に応じてFKを設定/クリア。
+     * ⚠ 土地の区画は、種別が仕入れ案件でも送られないことがある（区画の無い土地では選択欄が隠れて送られない）。
+     *   そのときも前の区画を残さない（validated() は送られないキーを含めない。Bug #38）
      */
     private function setLandSourceForeignKeys(array &$validated): void
     {
@@ -539,11 +552,14 @@ class PropertyController extends Controller
 
         if ($sourceType === HousingLandSourceType::ProjectLot->value) {
             $validated['re_procurement_id'] = null;
+            $validated['re_procurement_lot_id'] = null;
         } elseif ($sourceType === HousingLandSourceType::Procurement->value) {
             $validated['re_project_lot_id'] = null;
+            $validated['re_procurement_lot_id'] = isset($validated['re_procurement_lot_id']) ? (int) $validated['re_procurement_lot_id'] : null;
         } else {
             $validated['re_project_lot_id'] = null;
             $validated['re_procurement_id'] = null;
+            $validated['re_procurement_lot_id'] = null;
         }
     }
 
@@ -577,6 +593,64 @@ class PropertyController extends Controller
         }
 
         return ['projectId' => $project->id, 'lots' => $project->housingLotOptions($this->lotIdsUsedByProperties($propertyId))];
+    }
+
+    /**
+     * 登録・編集画面の仕入れ案件の選択肢（決済完了・販売中）。
+     * 全区画がほかに取られた土地は出さない（選んでも区画を選べず、保存で「区画を選んでください。」と断られるだけなので）。
+     * $current の今の仕入れ案件は残す。⚠ 取られているかは紐付けで決める（ProcurementLotClaims。区画のステータスでは決めない）
+     *
+     * @return array<int, array{id: int, code: string, name: string, address: ?string}>
+     */
+    private function procurementOptions(?HsProperty $current): array
+    {
+        $procurements = ReProcurement::whereIn('status', ['settled', 'selling'])
+            ->orderByDesc('id')
+            ->get(['id', 'procurement_code', 'property_name', 'address']);
+
+        $lotIdsByProcurement = ReProcurementLot::whereIn('procurement_id', $procurements->pluck('id'))
+            ->get(['id', 'procurement_id'])
+            ->groupBy('procurement_id');
+        $taken = ProcurementLotClaims::takenLotIds($lotIdsByProcurement->keys()->all(), $current);
+        $currentId = $current?->re_procurement_id;
+
+        $options = [];
+        foreach ($procurements as $pr) {
+            $lots = $lotIdsByProcurement->get($pr->id);
+            $full = $lots !== null && $lots->every(fn (ReProcurementLot $lot) => in_array((int) $lot->id, $taken, true));
+            if ($full && (int) $pr->id !== (int) $currentId) {
+                continue;
+            }
+            $options[] = [
+                'id'      => $pr->id,
+                'code'    => $pr->procurement_code,
+                'name'    => $pr->property_name,
+                'address' => $pr->address,
+            ];
+        }
+
+        return $options;
+    }
+
+    /**
+     * 土地の区画の選択の初期値。選んでいる仕入れ案件と、その区画の一覧（API の lots と同じ形。ほかに取られた区画を外し、
+     * $current の今の区画は残す）をサーバで作る（入力エラーで戻った画面・編集画面。決めたこと 8）。
+     * ⚠ 区画の `<option>` は `<template x-for>` なので、一覧を空から始めると今の区画が選べず、空のまま送られる（Top trap #3）。
+     *
+     * @return array{procurementId: ?int, lots: array<int, array<string, mixed>>}
+     */
+    private function initialProcurementLotSelection(mixed $procurementId, ?HsProperty $current): array
+    {
+        $id = is_int($procurementId) || (is_string($procurementId) && $procurementId !== '' && ctype_digit($procurementId)) ? (int) $procurementId : null;
+        $procurement = $id === null ? null : ReProcurement::find($id);
+        if (! $procurement) {
+            return ['procurementId' => null, 'lots' => []];
+        }
+
+        return [
+            'procurementId' => $procurement->id,
+            'lots'          => $procurement->housingLotOptions(ProcurementLotClaims::takenLotIds([$procurement->id], $current)),
+        ];
     }
 
     /**

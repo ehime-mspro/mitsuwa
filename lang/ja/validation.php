@@ -419,6 +419,7 @@ return [
         'order_name' => '案件名',
         're_project_lot_id' => '区画',
         're_procurement_id' => '仕入れ案件',
+        're_procurement_lot_id' => '区画',
         'land_source_type' => '土地紐づけ種別',
         'supplier_id' => '仕入れ先',
         'client_id' => '発注者',

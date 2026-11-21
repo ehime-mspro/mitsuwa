@@ -201,7 +201,7 @@ class HsContractListController extends Controller
         }
 
         $hsContract->load(['createdBy']);
-        $property->load(['projectLot.project', 'procurement']);
+        $property->load(['projectLot.project', 'procurement', 'procurementLot']);
 
         // 担当者リスト
         $staffUsers = User::assignableWith($hsContract->created_by);
@@ -217,8 +217,8 @@ class HsContractListController extends Controller
             }
         }
 
-        // 手動 OFF の表示に使う「今の紐付け先から計算した土地原価」（判断待ち ⑤）
-        $computedLandCost = HousingLandCost::forLink($property->land_source_type?->value, $property->re_project_lot_id, $property->re_procurement_id);
+        // 手動 OFF の表示に使う「今の紐付け先から計算した土地原価」（判断待ち ⑤。土地の区画を選んだ建売は区画の按分）
+        $computedLandCost = HousingLandCost::forLink($property->land_source_type?->value, $property->re_project_lot_id, $property->re_procurement_id, $property->re_procurement_lot_id);
 
         return view('housing.contracts.edit-building', compact(
             'hsContract', 'property', 'staffUsers', 'buyers', 'computedLandCost'
@@ -287,13 +287,15 @@ class HsContractListController extends Controller
                 'updated_by'          => auth()->id(),
             ];
             // 手動 ON は送られた値。OFF はサーバーが決める（手入力をやめた・「今の計算値にする」なら紐付け先から計算し、
-            // それ以外は保存済みのまま。判断待ち ⑤。App\Support\HousingLandCost::whenAutomatic()）
+            // それ以外は保存済みのまま。判断待ち ⑤。App\Support\HousingLandCost::whenAutomatic()）。
+            // ⚠ 紐付けは保存済みのまま渡す（土地の区画も。渡さないと区画のある建売が「紐付けが変わった」と見え、計算し直す）
             $propertyData['land_cost'] = $isManual
                 ? ($validated['land_cost'] ?? null)
                 : HousingLandCost::whenAutomatic($property, [
-                    'land_source_type'  => $property->land_source_type?->value,
-                    're_project_lot_id' => $property->re_project_lot_id,
-                    're_procurement_id' => $property->re_procurement_id,
+                    'land_source_type'      => $property->land_source_type?->value,
+                    're_project_lot_id'     => $property->re_project_lot_id,
+                    're_procurement_id'     => $property->re_procurement_id,
+                    're_procurement_lot_id' => $property->re_procurement_lot_id,
                 ], $request->boolean('refresh_land_cost'));
             $property->update($propertyData);
         });
@@ -480,7 +482,7 @@ class HsContractListController extends Controller
     {
         // 未契約物件のみ取得（紐づけ先の参考販売価格を計算するため projectLot / procurement を eager load）
         $query = HsProperty::whereDoesntHave('contract')
-            ->with(['projectLot', 'procurement']);
+            ->with(['projectLot', 'procurement', 'procurementLot']);
 
         // 物件名の LIKE 検索（部分一致）
         $keyword = trim((string) $request->input('keyword', ''));

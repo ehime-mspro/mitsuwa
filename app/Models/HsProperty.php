@@ -87,6 +87,10 @@ class HsProperty extends Model
         return $this->belongsTo(ReProcurement::class, 're_procurement_id');
     }
 
+    /**
+     * 紐づく土地の仕入れ案件の区画（土地元が仕入れ案件のときだけ。区画の無い土地・#21 の形は null）。
+     * ⚠ 建売は契約の前から区画を取る（1 つの区画に付けられる建売・契約・契約以降の注文住宅は 1 件だけ。App\Support\ProcurementLotClaims）
+     */
     public function procurementLot(): BelongsTo
     {
         return $this->belongsTo(ReProcurementLot::class, 're_procurement_lot_id');
@@ -406,7 +410,9 @@ class HsProperty extends Model
     // ============================================================
 
     /**
-     * 紐づけ先の土地販売価格（参考値）
+     * 紐づけ先の土地販売価格（参考値）。
+     * 土地の区画を選んだ建売は区画の販売価格（区画の販売価格が空なら null。土地全体の想定販売価格にはしない。決めたこと 1）。
+     * 区画の無い建売（区画の無い土地・#21 の形）は今どおり仕入れ案件の想定販売価格（土地）。
      */
     public function getReferenceLandSellingPrice(): ?int
     {
@@ -414,6 +420,10 @@ class HsProperty extends Model
             return $this->projectLot->selling_price;
         }
         if ($this->land_source_type === HousingLandSourceType::Procurement && $this->procurement) {
+            if ($this->re_procurement_lot_id !== null) {
+                return $this->procurementLot?->selling_price;
+            }
+
             return $this->procurement->target_selling_price_land;
         }
         return null;
@@ -434,7 +444,13 @@ class HsProperty extends Model
         }
         if ($this->land_source_type === HousingLandSourceType::Procurement && $this->procurement) {
             $p = $this->procurement;
-            return $p->procurement_code . ' ' . $p->property_name;
+            $label = $p->procurement_code . ' ' . $p->property_name;
+            // 土地の区画を選んだ建売は区画も出す（分譲地区画の「… > N号地」と同じ形）
+            if ($this->re_procurement_lot_id !== null && $this->procurementLot) {
+                $label .= ' > ' . $this->procurementLot->lot_number . '号地';
+            }
+
+            return $label;
         }
         return null;
     }

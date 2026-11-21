@@ -84,10 +84,12 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $this->assertSame(0, ReProcurementLot::count());
     }
 
+    /** 建売の契約は、その建売の区画だけを動かす（土地のほかの区画は動かさない。設計書 §5.4） */
     public function test_a_building_contract_on_the_land_marks_the_lot_sold_and_deleting_it_puts_it_back(): void
     {
         $procurement = $this->landProcurement();
         $lot = $this->procurementLot($procurement);
+        $other = $this->procurementLot($procurement, ['lot_number' => 2]);
         $property = HsProperty::create([
             'property_code' => 'HS-LOT-001',
             'property_name' => '土地の建売',
@@ -97,6 +99,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
             'land_cost' => 9600000,
             'land_source_type' => 'procurement',
             're_procurement_id' => $procurement->id,
+            're_procurement_lot_id' => $lot->id,
             'created_by' => $this->user->id,
         ]);
 
@@ -108,10 +111,10 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
             'tax_rate' => 10.00,
             'contract_date' => '2026-07-19',
         ])->assertSessionHasNoErrors();
-        $this->assertSame(LotStatus::Sold, $this->lotStatus($lot));
+        $this->assertSame([LotStatus::Sold, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
 
         $this->actingAs($this->user)->delete("/housing/properties/{$property->id}/contract")->assertRedirect();
-        $this->assertSame(LotStatus::OnSale, $this->lotStatus($lot));
+        $this->assertSame([LotStatus::OnSale, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
     }
 
     private function customOrder(array $overrides): HsCustomOrder

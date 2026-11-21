@@ -11,6 +11,7 @@ use App\Models\HsProperty;
 use App\Models\ReCostItem;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
+use App\Models\ReProcurementLot;
 use App\Models\ReProject;
 use App\Models\ReProjectCost;
 use App\Models\ReProjectLot;
@@ -160,6 +161,34 @@ abstract class HousingScreenTestCase extends TestCase
             'address' => '愛媛県松山市勝山町1-1',
             'land_area_sqm' => 150,
             'created_by' => $this->user->id,
+        ], $overrides));
+    }
+
+    /**
+     * 土地の仕入れ案件（販売中・土地面積 150㎡・想定販売価格（土地）25,000,000円・原価の行 30,000,000円）。
+     * 区画は procurementLot() で足す。
+     */
+    protected function landProcurement(array $overrides = []): ReProcurement
+    {
+        $land = $this->procurement(array_merge([
+            'property_type' => 'brokerage_land',
+            'status' => 'selling',
+            'target_selling_price_land' => 25000000,
+        ], $overrides));
+        ReProcurementCost::create(['procurement_id' => $land->id, 'cost_item_id' => $this->costItem()->id, 'estimated_amount' => 30000000]);
+
+        return $land;
+    }
+
+    /** 土地の仕入れ案件の区画（1 号地・132.69㎡・20,000,000円・販売中） */
+    protected function procurementLot(ReProcurement $land, array $overrides = []): ReProcurementLot
+    {
+        return ReProcurementLot::create(array_merge([
+            'procurement_id' => $land->id,
+            'lot_number' => 1,
+            'area_sqm' => 132.69,
+            'selling_price' => 20000000,
+            'status' => 'on_sale',
         ], $overrides));
     }
 

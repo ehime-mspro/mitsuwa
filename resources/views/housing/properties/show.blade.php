@@ -71,8 +71,9 @@
                         <a href="{{ route('realestate.projects.show', $property->projectLot->project_id) }}" style="color: #1d4ed8; text-decoration: underline;">{{ $sourceDisplay }}</a>
                     @elseif($property->land_source_type === \App\Enums\HousingLandSourceType::Procurement && $property->procurement)
                         <a href="{{ route('realestate.procurements.show', $property->procurement) }}" style="color: #1d4ed8; text-decoration: underline;">{{ $sourceDisplay }}</a>
-                        @if($property->procurement->lot)
-                            <div style="font-size: 13px; color: #4b5563; margin-top: 3px;">区画 {{ $property->procurement->lot->lot_number }}号地 {{ $property->procurement->lot->areaLabel() }}</div>
+                        {{-- 建売の区画（土地のほかの区画ではない。区画の無い建売＝#21 の形は出さない） --}}
+                        @if($property->procurementLot)
+                            <div style="font-size: 13px; color: #4b5563; margin-top: 3px;">区画 {{ $property->procurementLot->lot_number }}号地 {{ $property->procurementLot->areaLabel() }}</div>
                         @endif
                     @else
                         {{ $sourceDisplay }}
