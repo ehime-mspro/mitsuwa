@@ -5,8 +5,10 @@
     // 区画の選択の初期値（コントローラが作る。@json には単一の変数を渡す。Bug #26）
     $initialProjectId = $lotSelection['projectId'];
     $initialLots = $lotSelection['lots'];
-    // 土地の区画の一覧（入力エラーで戻った画面・編集画面はサーバが作る。決めたこと 8）
+    // 土地の区画の一覧と選んでいる区画（入力エラーで戻った画面・編集画面はサーバが作る。決めたこと 8）。
+    // 一覧に無くなった区画（取られた区画で断られた）は選ばない（Ruling 11。App\Support\HousingProcurementLots::initialSelection()）
     $initialProcurementLots = $procurementLotSelection['lots'];
+    $initialProcurementLotId = (string) ($procurementLotSelection['lotId'] ?? '');
 @endphp
 
 <div x-data="housingPropertyForm()">
@@ -244,7 +246,7 @@ function housingPropertyForm() {
         selectedLotId: {{ \Illuminate\Support\Js::from(old('re_project_lot_id', $p?->re_project_lot_id)) }},
         selectedProcurementId: {{ \Illuminate\Support\Js::from(old('re_procurement_id', $p?->re_procurement_id)) }},
         // 土地の区画（区画の一覧はサーバが描く。入力エラーで戻った画面・編集画面。決めたこと 8）
-        selectedProcurementLotId: {{ \Illuminate\Support\Js::from((string) old('re_procurement_lot_id', $p?->re_procurement_lot_id ?? '')) }},
+        selectedProcurementLotId: {{ \Illuminate\Support\Js::from($initialProcurementLotId) }},
         postalCode: {{ \Illuminate\Support\Js::from((string) old('postal_code', $p?->postal_code ?? '')) }},
         address: {{ \Illuminate\Support\Js::from((string) old('address', $p?->address ?? '')) }},
         landAreaSqm: {{ \Illuminate\Support\Js::from((string) old('land_area_sqm', $p?->land_area_sqm ?? '')) }},
@@ -294,6 +296,10 @@ function housingPropertyForm() {
             // （取り直して一覧を描き直すと、選んでいた区画が外れることがある）
             if (self.selectedProjectId && self.lots.length === 0) {
                 self.fetchLots(self.selectedProjectId);
+            }
+            // 土地の区画の一覧に無い区画は選ばない（取られた区画で断られて戻った画面など。サーバも外して渡す。Ruling 11）
+            if (self.selectedProcurementLotId && !self.procurementLots.some(function (lot) { return String(lot.id) === String(self.selectedProcurementLotId); })) {
+                self.selectedProcurementLotId = '';
             }
         },
 

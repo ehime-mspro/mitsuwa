@@ -18,7 +18,7 @@
     </label>
 </div>
 <p x-show="!isLandCostManual && landCostView().willCompute && !creating && !landCostView().unavailable && landCostView().value !== null" style="display: none;" class="text-xs text-emerald-700 mt-1">保存すると、紐付け先から計算したこの値になります。</p>
-<p x-show="!isLandCostManual && landCostView().unavailable" style="display: none;" class="text-xs text-amber-700 mt-1">紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。</p>
+<p x-show="!isLandCostManual && landCostView().unavailable" style="display: none;" class="text-xs text-amber-700 mt-1">紐付け先から計算できません（分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。</p>
 <div x-show="landCostView().refreshOffered" style="display: none;" class="mt-1">
     <p class="text-xs text-gray-600">保存されている値は、今の紐付け先から計算した値（<span x-text="housingYen(computedLandCost)"></span>）と違います。</p>
     <label class="flex gap-1 text-xs text-gray-700 cursor-pointer mt-1" style="align-items: flex-start;">

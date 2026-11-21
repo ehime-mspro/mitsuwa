@@ -25,7 +25,7 @@ use App\Models\ReProcurementLot;
  */
 class ProcurementLotPropertyTest extends HousingScreenTestCase
 {
-    private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
+    private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
 
     /** @return array{0: ReProcurement, 1: ReProcurementLot, 2: ReProcurementLot} */
     private function twoLotLand(?int $secondPrice = 10000000, array $overrides = []): array
@@ -198,6 +198,37 @@ class ProcurementLotPropertyTest extends HousingScreenTestCase
         $html = $this->landed($this->submit($this->fill($this->createForm($this->htmlOf($url), $land, $this->chooseLot($second)), ['property_name' => '後から来た建売']), $url));
         $this->assertFlash($html, 'success', '建売物件「HS-002」を登録しました。');
         $this->assertSame($second->id, HsProperty::where('property_code', 'HS-002')->sole()->re_procurement_lot_id);
+    }
+
+    /** Ruling 11: 取られた区画で断られて戻った画面は、一覧に無くなった区画を選んだままにしない（その区画の按分も出さない） */
+    public function test_a_refused_lot_is_not_kept_on_the_returned_screen(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $url = $this->createUrl();
+        $stale = $this->fill($this->createForm($this->htmlOf($url), $land, $this->chooseLot($first)), ['property_name' => '後から来た建売']);
+        $this->propertyOn($land, $first, ['property_code' => 'HS-001', 'property_name' => '先に建てた建売']);
+
+        $html = $this->landed($this->submit($stale, $url));
+
+        $this->assertErrorItem($html, 'この区画（1号地）は建売物件「HS-001 先に建てた建売」に紐づいています。ほかの区画を選んでください。');
+        // 戻った画面はそのまま組める（x-model の値が選択肢に無い＝ブラウザでは空で送られる形にしない）
+        $again = $this->browserForm($html, $this->storeNeedle(), 'housingPropertyForm');
+        $this->assertSame([], $again['run']['requests'], '戻った画面が区画の一覧を API から取り直している');
+        $this->assertSame([$second->id], array_column($again['run']['state']['procurementLots'], 'id'));
+        $this->assertSame([(string) $land->id, ''], [$again['fields']['re_procurement_id'], $again['fields']['re_procurement_lot_id'] ?? null], '戻った画面が取られた区画を選んだまま');
+        $this->assertNull($again['run']['state']['computedLandCost'], '戻った画面が取られた区画の按分を出している');
+
+        // 画面の JS も同じ（サーバが一覧に無い区画を渡しても、init() で外す）
+        $tampered = str_replace("selectedProcurementLotId: ''", "selectedProcurementLotId: '" . $first->id . "'", $html);
+        $this->assertNotSame($html, $tampered);
+        $again = $this->browserForm($tampered, $this->storeNeedle(), 'housingPropertyForm');
+        $this->assertSame('', $again['fields']['re_procurement_lot_id'] ?? null, '画面の JS が一覧に無い区画を選んだまま');
+
+        // 選び直して保存できる
+        $html = $this->landed($this->submit($this->browserForm($html, $this->storeNeedle(), 'housingPropertyForm',
+            'data.selectedProcurementLotId = "' . $second->id . '"; data.onProcurementLotChange();'), $url));
+        $this->assertFlash($html, 'success', '建売物件「HS-002」を登録しました。');
+        $this->assertSame([$second->id, 10000000], [HsProperty::where('property_code', 'HS-002')->sole()->re_procurement_lot_id, HsProperty::where('property_code', 'HS-002')->sole()->land_cost]);
     }
 
     /** Review Focus 1: 手で組んだ送信で別の土地の区画・無い区画・配列を送る → 入力エラーで断り、何も保存しない */

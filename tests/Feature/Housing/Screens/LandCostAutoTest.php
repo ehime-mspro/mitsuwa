@@ -200,7 +200,7 @@ class LandCostAutoTest extends HousingScreenTestCase
     // ============================================================
 
     private const NOTE_COMPUTE = '保存すると、紐付け先から計算したこの値になります。';
-    private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
+    private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
 
     /**
      * 画面の JS を動かし、土地原価の表示に使う値を読む。
