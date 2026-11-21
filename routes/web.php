@@ -834,16 +834,23 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('realestate.procurements.update-status');
         });
 
-        // 土地の区画（1 案件に 1 区画。登録・編集は経営層+管理者、削除は経営層のみ）
+        // 土地の区画（1 案件に何区画でも。登録・編集は経営層+管理者、削除は経営層のみ）。
+        // {lot} はその仕入れ案件の区画に絞る（scopeBindings）。見つからなければ 404 にせず、詳細の区画の欄へ戻して理由を出す
+        // （仕入れ案件も無ければ一覧へ。ProcurementLotController::missing()）
         Route::middleware('role:executive,manager')->group(function () {
-            Route::post('/procurements/{procurement}/lot', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'store'])
-                ->name('realestate.procurements.lot.store');
-            Route::put('/procurements/{procurement}/lot', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'update'])
-                ->name('realestate.procurements.lot.update');
+            Route::post('/procurements/{procurement}/lots', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'store'])
+                ->missing(fn (\Illuminate\Http\Request $request) => \App\Http\Controllers\RealEstate\ProcurementLotController::missing($request))
+                ->name('realestate.procurements.lots.store');
+            Route::put('/procurements/{procurement}/lots/{lot}', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'update'])
+                ->scopeBindings()
+                ->missing(fn (\Illuminate\Http\Request $request) => \App\Http\Controllers\RealEstate\ProcurementLotController::missing($request))
+                ->name('realestate.procurements.lots.update');
         });
-        Route::delete('/procurements/{procurement}/lot', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'destroy'])
+        Route::delete('/procurements/{procurement}/lots/{lot}', [\App\Http\Controllers\RealEstate\ProcurementLotController::class, 'destroy'])
             ->middleware('role:executive')
-            ->name('realestate.procurements.lot.destroy');
+            ->scopeBindings()
+            ->missing(fn (\Illuminate\Http\Request $request) => \App\Http\Controllers\RealEstate\ProcurementLotController::missing($request))
+            ->name('realestate.procurements.lots.destroy');
 
         // 土地の仕入れ案件を分譲地に変える（経営層+管理者）。二度押しの 2 回目は仕入れ案件がもう無いので一覧へ理由つきで戻す
         Route::post('/procurements/{procurement}/convert-to-project', [\App\Http\Controllers\RealEstate\ProcurementController::class, 'convertToProject'])

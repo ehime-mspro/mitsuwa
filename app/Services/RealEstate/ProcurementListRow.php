@@ -15,7 +15,7 @@ use App\Models\ReProject;
  * （property_name / project_name など）を吸収し、Blade が instanceof で
  * 分岐せずに済むようにするための readonly 値オブジェクト。
  *
- * 区画数・区画URL は分譲地と、物件種別が土地の仕入れ案件（区画は 1 つまで）だけが持つ。
+ * 区画数・区画URL は分譲地と、物件種別が土地の仕入れ案件（1 案件に何区画でも）だけが持つ。
  * それ以外の仕入れ案件では null にして、「無い」ことを型で表す。
  */
 final class ProcurementListRow

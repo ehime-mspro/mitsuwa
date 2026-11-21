@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\RealEstate;
 
+use App\Enums\LotStatus;
 use App\Enums\ProcurementStatus;
 use App\Enums\ProjectStatus;
 use App\Enums\RealEstatePropertyType;
@@ -197,9 +198,25 @@ class ProcurementController extends Controller
         $schedule        = app(\App\Services\ScheduleCardService::class)->build($procurement);
         $scheduleCanEdit = $request->user()->role->isManagerOrAbove();
 
-        // 土地の区画（土地のときだけ欄を出す。登録のフォームの既定のステータスは契約などから決める）
-        $lot              = $procurement->property_type?->isLandOnly() ? $procurement->lot : null;
-        $lotDefaultStatus = $procurement->defaultLotStatus();
+        // 土地の区画（土地のときだけ欄を出す。1 案件に何区画でも。設計書 §5.1）
+        // - $lots: 号地の順 ／ $lotBlockers: 区画 id → その区画に紐づいているもの（削除を断る理由と同じ。DeletionBlockers）
+        // - $lotCreateDefaults: 追加のフォームの初期値。区画が無いときだけ土地面積・想定販売価格（土地）・defaultLotStatus()（紐付けがあれば成約）。
+        //   区画が 1 つ以上あれば「いちばん大きい号地＋1」・面積と販売価格は空・販売中（区画の無い契約がある土地で、足す区画が全部成約にならないように）
+        $lots              = $procurement->property_type?->isLandOnly() ? $procurement->lots : collect();
+        $lotBlockers       = DeletionBlockers::forEachProcurementLotId($lots->pluck('id')->all());
+        $lotCreateDefaults = $lots->isEmpty()
+            ? [
+                'lot_number'    => 1,
+                'area_sqm'      => $procurement->land_area_sqm,
+                'selling_price' => $procurement->target_selling_price_land,
+                'status'        => $procurement->defaultLotStatus()->value,
+            ]
+            : [
+                'lot_number'    => (int) $lots->max('lot_number') + 1,
+                'area_sqm'      => null,
+                'selling_price' => null,
+                'status'        => LotStatus::OnSale->value,
+            ];
         // 「分譲地に変える」を押せない理由（変えられるなら null）。画面はこの値だけを見る（サービスを自分では呼ばない）
         $conversionRefusal = ProcurementToProjectConverter::refusal($procurement);
 
@@ -209,7 +226,7 @@ class ProcurementController extends Controller
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
             'deletionBlockers', 'deletionBlockersSummary',
             'schedule', 'scheduleCanEdit',
-            'lot', 'lotDefaultStatus', 'conversionRefusal'
+            'lots', 'lotBlockers', 'lotCreateDefaults', 'conversionRefusal'
         ));
     }
 
@@ -326,7 +343,7 @@ class ProcurementController extends Controller
         $procurement->scheduleSteps()->delete();
 
         // 土地の区画も一緒に消す（本番は外部キーの CASCADE。テスト用スキーマは外部キーを張らないのでコードにも書く）
-        $procurement->lot()->delete();
+        $procurement->lots()->delete();
 
         // 原価明細も一緒に削除（cascadeOnDelete）
         $procurement->delete();
@@ -448,7 +465,7 @@ class ProcurementController extends Controller
         return function (string $attribute, mixed $value, \Closure $fail) use ($procurement) {
             if ($procurement !== null && is_string($value)
                 && $value !== RealEstatePropertyType::BrokerageLand->value
-                && $procurement->lot()->exists()) {
+                && $procurement->lots()->exists()) {
                 $fail(ReProcurement::TYPE_LOCKED_BY_LOT);
             }
         };

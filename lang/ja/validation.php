@@ -345,6 +345,7 @@ return [
         'new_monthly_fee' => '新・月額料金',
         'key_money' => '礼金',
         'lot_number' => '号地番号',
+        'lot_form' => '区画のフォーム',
         'unit_ids' => '区画',
         'unit_ids.*' => '区画',
         'tenant_type' => '入居者区分',
