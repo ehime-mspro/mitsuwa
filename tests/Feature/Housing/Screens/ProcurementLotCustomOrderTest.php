@@ -260,6 +260,22 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         $legacy = $this->orderOn($full, null, ['order_code' => 'CO-002']);
         $run = $this->driveAlpine($this->htmlOf(route('housing.custom-orders.edit', $legacy)), 'customOrderForm', 'customOrderForm()', '', evaluate: $ids);
         $this->assertSame([$lotless->id, $estimateOnly->id, $open->id, $full->id], $run['evaluated'][0], '編集で今の仕入れ案件が選択肢から消えた');
+
+        // 契約一覧から開く契約の編集も同じ（並びは仕入れ案件番号の順。今の仕入れ案件は残す）
+        $estimate = $this->orderForContractEdit($open, null, ['order_code' => 'CO-003', 'status' => 'estimation']);
+        $this->assertSame([$open->id, $estimateOnly->id, $lotless->id],
+            $this->procurementOptionIds($this->htmlOf(route('housing.contracts.edit-custom-order', $estimate))), '契約の編集に全区画が取られた土地が出ている');
+        $this->assertSame([$full->id, $open->id, $estimateOnly->id, $lotless->id],
+            $this->procurementOptionIds($this->htmlOf(route('housing.contracts.edit-custom-order', $legacy))), '契約の編集で今の仕入れ案件が選択肢から消えた');
+    }
+
+    /** @return array<int, int> 契約の編集の仕入れ案件の選択肢の id（空の選択肢を除く） */
+    private function procurementOptionIds(string $html): array
+    {
+        $this->assertSame(1, preg_match('/<select name="re_procurement_id" class="hc-select"[^>]*>(.*?)<\/select>/su', $html, $m), '契約の編集に仕入れ案件の選択欄が無い');
+        preg_match_all('/<option value="(\d+)"/u', $m[1], $values);
+
+        return array_map('intval', $values[1]);
     }
 
     // ============================================================
@@ -355,6 +371,11 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         // 区画の一覧（API・編集画面）は今の区画を残す
         $api = route('api.housing.procurement-info', $land) . '?custom_order_id=' . $order->id;
         $this->assertSame([$first->id, $second->id], array_column($this->actingAs($this->user)->getJson($api)->json('lots'), 'id'), 'API が今の区画を外した');
+        // 編集画面で仕入れ案件を選び直すと、この注文住宅を指定して区画の一覧を取る（今の区画が残る）
+        $run = $this->driveAlpine($this->htmlOf($url), 'customOrderForm', 'customOrderForm()', 'data.selectedProcurementId = "' . $land->id . '"; data.onProcurementChange();',
+            [$this->apiResponse($api)], true, ['data.procurementLots.map(function (l) { return l.id; })']);
+        $this->assertSame($api, $run['requests'][0]['url'] ?? null, '編集画面が今の注文住宅を指定して区画の一覧を取らない');
+        $this->assertSame([[$first->id, $second->id]], $run['evaluated'], '編集画面の区画の一覧から今の区画が消えた');
         $form = $this->fill($this->customOrderEditForm($order), ['notes' => '外構は別途']);
         $this->assertSame([(string) $land->id, (string) $first->id], [$form['fields']['re_procurement_id'], $form['fields']['re_procurement_lot_id'] ?? null], '編集画面で今の区画が選ばれていない');
 
@@ -601,6 +622,33 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         $this->assertSame($second->id, $order->fresh()->re_procurement_lot_id);
     }
 
+    /** 土地元を仕入れ案件からほかの種別に変えると、土地の区画も外す（注文住宅の編集・契約の編集。手で組んだ送信で区画の欄が残っていても） */
+    public function test_changing_the_land_type_drops_the_lot(): void
+    {
+        [$land, , $second] = $this->twoLotLand();
+        $projectLot = $this->lot($this->project(), 3);
+        $order = $this->orderForContractEdit($land, $second, ['status' => 'estimation']);
+
+        $url = route('housing.custom-orders.edit', $order);
+        $form = $this->customOrderEditForm($order);
+        $this->assertSame((string) $second->id, $form['fields']['re_procurement_lot_id'] ?? null, 'テストの前提: 区画の欄が送られていない');
+        $form['fields']['land_source_type'] = 'project_lot';
+        $form['fields']['re_project_lot_id'] = (string) $projectLot->id;
+        $this->assertFlash($this->landed($this->submit($form, $url)), 'success', '注文住宅案件「CO-001」を更新しました。');
+        $order->refresh();
+        $this->assertSame(['project_lot', $projectLot->id, null, null],
+            [$order->land_source_type->value, $order->re_project_lot_id, $order->re_procurement_id, $order->re_procurement_lot_id], '分譲地区画に変えても土地の区画が残った');
+
+        $order->update(['land_source_type' => 'procurement', 're_project_lot_id' => null, 're_procurement_id' => $land->id, 're_procurement_lot_id' => $second->id]);
+        $contractUrl = route('housing.contracts.edit-custom-order', $order);
+        $form = $this->contractEditForm($order->fresh(), $this->htmlOf($contractUrl));
+        $this->assertSame((string) $second->id, $form['fields']['re_procurement_lot_id'] ?? null, 'テストの前提: 区画の欄が送られていない');
+        $form['fields']['land_source_type'] = 'customer_land';
+        $this->assertFlash($this->landed($this->submit($form, $contractUrl)), 'success', '契約を更新しました。');
+        $order->refresh();
+        $this->assertSame(['customer_land', null, null], [$order->land_source_type->value, $order->re_procurement_id, $order->re_procurement_lot_id], 'お客様の土地に変えても土地の区画が残った');
+    }
+
     /** 契約の編集でも、取られた区画は断り、戻った画面はその区画を選んだままにしない（Ruling 11） */
     public function test_the_contract_edit_refuses_a_taken_lot(): void
     {
@@ -617,6 +665,11 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         $again = $this->contractEditForm($order, $html);
         $this->assertSame([$second->id], array_column($again['run']['state']['procurementLots'], 'id'));
         $this->assertSame('', $again['fields']['re_procurement_lot_id'] ?? null, '戻った画面が取られた区画を選んだまま');
+
+        // 画面の JS も、一覧に無い区画を選ばない（サーバが外し忘れても。Ruling 11）
+        $tampered = str_replace("reProcurementLotId: ''", "reProcurementLotId: '" . $first->id . "'", $html);
+        $this->assertNotSame($html, $tampered, 'テストの前提: 区画の初めの値を書き換えられない');
+        $this->assertSame('', $this->contractEditForm($order, $tampered)['fields']['re_procurement_lot_id'] ?? null, '画面の JS が一覧に無い区画を選んだまま');
     }
 
     // ============================================================
