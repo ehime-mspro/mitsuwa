@@ -26,6 +26,7 @@ class ReContract extends Model
         'procurement_id',
         'project_id',
         'lot_id',
+        'procurement_lot_id',
         'buyer_id',
         'buyer_name',
         'contract_amount_land',
@@ -158,6 +159,11 @@ class ReContract extends Model
     public function procurement(): BelongsTo
     {
         return $this->belongsTo(ReProcurement::class, 'procurement_id');
+    }
+
+    public function procurementLot(): BelongsTo
+    {
+        return $this->belongsTo(ReProcurementLot::class, 'procurement_lot_id');
     }
 
     public function project(): BelongsTo

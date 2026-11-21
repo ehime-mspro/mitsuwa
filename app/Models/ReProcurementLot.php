@@ -7,9 +7,11 @@ use App\Support\AreaConverter;
 use App\Support\TsuboPrice;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
- * 土地の仕入れ案件の区画（取引種別を問わない。1 案件に 1 区画まで。自社買取に限るのは「分譲地に変える」だけ）。設計書 §6。
+ * 土地の仕入れ案件の区画（取引種別を問わない。1 案件に何区画でも。自社買取に限るのは「分譲地に変える」だけ）。設計書 §6。
  *
  * ⚠ 坪数・坪単価は保存しない。表示は面積と販売価格から毎回求める（Bug #33・#34。分譲地の区画と違い、
  *   保存した坪数・坪単価が食い違う余地を作らない）。
@@ -39,6 +41,24 @@ class ReProcurementLot extends Model
     public function procurement(): BelongsTo
     {
         return $this->belongsTo(ReProcurement::class, 'procurement_id');
+    }
+
+    /** この区画に付いた不動産の契約（1 区画に 1 件まで） */
+    public function contract(): HasOne
+    {
+        return $this->hasOne(ReContract::class, 'procurement_lot_id');
+    }
+
+    /** この区画を土地元にした建売物件 */
+    public function properties(): HasMany
+    {
+        return $this->hasMany(HsProperty::class, 're_procurement_lot_id');
+    }
+
+    /** この区画を土地元にした注文住宅 */
+    public function customOrders(): HasMany
+    {
+        return $this->hasMany(HsCustomOrder::class, 're_procurement_lot_id');
     }
 
     /** 坪数（㎡ × 0.3025 の切り捨て。保存しない） */

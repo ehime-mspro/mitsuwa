@@ -108,7 +108,13 @@ class ReProcurement extends Model
         return $this->hasMany(ReContract::class, 'procurement_id');
     }
 
-    /** 土地の区画（1 案件に 1 区画まで） */
+    /** 土地の区画（1 案件に何区画でも。号地番号の昇順） */
+    public function lots(): HasMany
+    {
+        return $this->hasMany(ReProcurementLot::class, 'procurement_id')->orderBy('lot_number');
+    }
+
+    /** 土地の区画（1 案件に 1 区画まで。⚠ Task 8 で消す。新しい処理は lots() を使う） */
     public function lot(): HasOne
     {
         return $this->hasOne(ReProcurementLot::class, 'procurement_id');

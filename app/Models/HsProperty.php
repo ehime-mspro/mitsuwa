@@ -33,6 +33,7 @@ class HsProperty extends Model
         'land_source_type',
         're_project_lot_id',
         're_procurement_id',
+        're_procurement_lot_id',
         'postal_code',
         'address',
         'land_area_sqm',
@@ -84,6 +85,11 @@ class HsProperty extends Model
     public function procurement(): BelongsTo
     {
         return $this->belongsTo(ReProcurement::class, 're_procurement_id');
+    }
+
+    public function procurementLot(): BelongsTo
+    {
+        return $this->belongsTo(ReProcurementLot::class, 're_procurement_lot_id');
     }
 
     /**

@@ -162,11 +162,11 @@ trait CreatesRealEstateSchema
             $t->timestamps();
         });
 
-        // 土地の仕入れ案件の区画。database/sql/2026-11-20-create-re-procurement-lots.sql と対で維持する。
+        // 土地の仕入れ案件の区画。database/sql/2026-11-20-create-re-procurement-lots.sql と 2026-11-21-re-procurement-lots-multi.sql と対で維持する。
         // ⚠ 外部キーは張らない（上の決まり）。本番の ON DELETE CASCADE は ProcurementController::destroy() がコードでも行う。
         Schema::create('re_procurement_lots', function (Blueprint $t) {
             $t->id();
-            $t->unsignedBigInteger('procurement_id')->unique('uq_re_procurement_lots_procurement');
+            $t->unsignedBigInteger('procurement_id')->index('idx_re_procurement_lots_procurement');
             $t->integer('lot_number');
             $t->decimal('area_sqm', 10, 2);
             $t->integer('selling_price')->nullable();
@@ -197,6 +197,7 @@ trait CreatesRealEstateSchema
             $t->unsignedBigInteger('procurement_id')->nullable();
             $t->unsignedBigInteger('project_id')->nullable();
             $t->unsignedBigInteger('lot_id')->nullable();
+            $t->unsignedBigInteger('procurement_lot_id')->nullable()->unique('uq_re_contracts_procurement_lot');
             $t->unsignedBigInteger('buyer_id')->nullable();
             $t->string('buyer_name', 100)->nullable();
             $t->integer('contract_amount_land')->nullable();
@@ -289,6 +290,7 @@ trait CreatesRealEstateSchema
             $t->string('land_source_type', 20)->nullable();
             $t->unsignedBigInteger('re_project_lot_id')->nullable();
             $t->unsignedBigInteger('re_procurement_id')->nullable();
+            $t->unsignedBigInteger('re_procurement_lot_id')->nullable()->index();
             $t->string('postal_code', 10)->nullable();
             $t->string('address', 200);
             $t->decimal('land_area_sqm', 10, 2)->nullable();
@@ -333,6 +335,7 @@ trait CreatesRealEstateSchema
             $t->string('land_source_type', 20)->nullable();
             $t->unsignedBigInteger('re_project_lot_id')->nullable();
             $t->unsignedBigInteger('re_procurement_id')->nullable();
+            $t->unsignedBigInteger('re_procurement_lot_id')->nullable()->index();
             $t->string('postal_code', 10)->nullable();
             $t->string('address', 200);
             $t->decimal('land_area_sqm', 10, 2)->nullable();

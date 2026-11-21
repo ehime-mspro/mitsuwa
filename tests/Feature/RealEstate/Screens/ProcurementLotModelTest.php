@@ -33,14 +33,74 @@ class ProcurementLotModelTest extends RealEstateScreenTestCase
 
         $this->assertEqualsCanonicalizing($sqlColumns, Schema::getColumnListing('re_procurement_lots'));
 
-        $unique = collect(Schema::getIndexes('re_procurement_lots'))
-            ->contains(fn ($i) => $i['unique'] && $i['columns'] === ['procurement_id']);
-        $this->assertTrue($unique, 'procurement_id の一意の索引が無い');
-
         $this->assertTrue(Schema::hasColumn('re_projects', 'source_procurement_code'));
         $projectUnique = collect(Schema::getIndexes('re_projects'))
             ->contains(fn ($i) => $i['unique'] && $i['columns'] === ['source_procurement_code']);
         $this->assertTrue($projectUnique, 'source_procurement_code の一意の索引が無い');
+    }
+
+    public function test_the_test_schema_matches_the_multi_lot_sql(): void
+    {
+        $sql = file_get_contents(base_path('database/sql/2026-11-21-re-procurement-lots-multi.sql'));
+
+        // ① 区画の procurement_id は一意でなく、ふつうの索引がある
+        $indexes = collect(Schema::getIndexes('re_procurement_lots'));
+        $this->assertFalse($indexes->contains(fn ($i) => $i['unique'] && $i['columns'] === ['procurement_id']), '一意の索引が残っている');
+        $this->assertTrue($indexes->contains(fn ($i) => ! $i['unique'] && $i['columns'] === ['procurement_id']), 'ふつうの索引が無い');
+
+        // ② 3 つの表に新しい列がある
+        $this->assertTrue(Schema::hasColumn('re_contracts', 'procurement_lot_id'));
+        $this->assertTrue(Schema::hasColumn('hs_properties', 're_procurement_lot_id'));
+        $this->assertTrue(Schema::hasColumn('hs_custom_orders', 're_procurement_lot_id'));
+
+        // ③ 契約の列は一意
+        $this->assertTrue(collect(Schema::getIndexes('re_contracts'))
+            ->contains(fn ($i) => $i['unique'] && $i['columns'] === ['procurement_lot_id']));
+
+        // ④ SQL の ADD COLUMN の列名とテスト用スキーマの列名が一致
+        preg_match_all('/ADD COLUMN `(\w+)`/', $sql, $m);
+        $this->assertEqualsCanonicalizing(
+            ['procurement_lot_id', 're_procurement_lot_id', 're_procurement_lot_id'],
+            $m[1],
+        );
+        foreach (array_unique($m[1]) as $column) {
+            $this->assertTrue(
+                Schema::hasColumn('re_contracts', $column) || Schema::hasColumn('hs_properties', $column),
+                $column,
+            );
+        }
+    }
+
+    public function test_lots_are_ordered_and_linked(): void
+    {
+        $p = $this->landProcurement();
+        $lot3 = $this->procurementLot($p, ['lot_number' => 3]);
+        $this->procurementLot($p, ['lot_number' => 1]);
+        $lot2 = $this->procurementLot($p, ['lot_number' => 2]);
+
+        $this->assertSame([1, 2, 3], $p->lots->pluck('lot_number')->all());
+
+        $contract = ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted',
+            'property_name' => '契約物件', 'procurement_id' => $p->id, 'procurement_lot_id' => $lot2->id, 'created_by' => 1,
+        ]);
+        $hs = HsProperty::create([
+            'property_code' => 'HS-001', 'property_name' => '建売', 'status' => 'construction',
+            'land_source_type' => 'procurement', 're_procurement_id' => $p->id, 're_procurement_lot_id' => $lot3->id,
+            'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+        ]);
+        $order = HsCustomOrder::create([
+            'order_code' => 'CO-001', 'order_name' => '注文', 'customer_name' => '山田', 'status' => 'estimation',
+            'land_source_type' => 'procurement', 're_procurement_id' => $p->id, 're_procurement_lot_id' => $lot3->id,
+            'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
+        ]);
+
+        $this->assertSame($contract->id, $lot2->contract->id);
+        $this->assertSame($lot2->id, $contract->procurementLot->id);
+        $this->assertSame([$hs->id], $lot3->properties->pluck('id')->all());
+        $this->assertSame([$order->id], $lot3->customOrders->pluck('id')->all());
+        $this->assertSame($lot3->id, $hs->procurementLot->id);
+        $this->assertSame($lot3->id, $order->procurementLot->id);
     }
 
     public function test_area_and_tsubo_price_labels(): void
