@@ -191,9 +191,13 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $this->setOrderStatus($order->fresh(), 'design');
         $this->assertSame([LotStatus::OnSale, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
 
-        // 区画の無い注文住宅（#21 の形）は区画を動かさない
+        // 区画の無い注文住宅（#21 の形）は「契約」へ進めず、区画を動かさない
+        // （区画のある土地で区画を選んでいないため。設計書 2026-11-22-lot-link-on-add の決まり 7）
         $legacy = $this->orderOnLand($procurement->id, 'estimation');
-        $this->setOrderStatus($legacy, 'contracted');
+        $this->actingAs($this->user)->patch("/housing/custom-orders/{$legacy->id}/status", ['status' => 'contracted'])
+            ->assertStatus(422)
+            ->assertExactJson(['success' => false, 'message' => HsCustomOrder::CONTRACT_NEEDS_LOT]);
+        $this->assertSame('estimation', $legacy->fresh()->status->value);
         $this->assertSame([LotStatus::OnSale, LotStatus::OnSale], [$this->lotStatus($lot), $this->lotStatus($other)]);
     }
 
