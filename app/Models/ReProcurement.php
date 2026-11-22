@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\CustomOrderStatus;
 use App\Enums\LotStatus;
 use App\Enums\ProcurementStatus;
 use App\Enums\RealEstatePropertyType;
@@ -112,24 +111,6 @@ class ReProcurement extends Model
     public function lots(): HasMany
     {
         return $this->hasMany(ReProcurementLot::class, 'procurement_id')->orderBy('lot_number');
-    }
-
-    /**
-     * 区画を新しく登録するときの既定のステータス。
-     * 契約がある・この案件を土地元にした建売に契約がある・注文住宅が契約以降なら成約、それ以外は販売中。
-     */
-    public function defaultLotStatus(): LotStatus
-    {
-        $contractedOrder = collect(CustomOrderStatus::cases())
-            ->filter(fn (CustomOrderStatus $s) => $s->isContractedOrLater())
-            ->map(fn (CustomOrderStatus $s) => $s->value)
-            ->all();
-
-        $sold = $this->contracts()->exists()
-            || HsProperty::where('re_procurement_id', $this->id)->whereHas('contract')->exists()
-            || HsCustomOrder::where('re_procurement_id', $this->id)->whereIn('status', $contractedOrder)->exists();
-
-        return $sold ? LotStatus::Sold : LotStatus::OnSale;
     }
 
     /** 全区画の販売価格の合計（ReProject と同じ名前） */

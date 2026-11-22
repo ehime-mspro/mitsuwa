@@ -346,6 +346,8 @@ return [
         'key_money' => '礼金',
         'lot_number' => '号地番号',
         'lot_form' => '区画のフォーム',
+        'lot_link' => '紐づけるもの',
+        'lot_link_candidates' => '紐づけるものの一覧',
         'unit_ids' => '区画',
         'unit_ids.*' => '区画',
         'tenant_type' => '入居者区分',

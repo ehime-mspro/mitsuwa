@@ -3,14 +3,12 @@
 namespace Tests\Feature\RealEstate\Screens;
 
 use App\Enums\LotStatus;
-use App\Models\HsContract;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
 use Illuminate\Support\Facades\Schema;
-use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * 土地（自社買取）の仕入れ案件の区画の表・モデル・判定（設計書 §6）。
@@ -118,54 +116,6 @@ class ProcurementLotModelTest extends RealEstateScreenTestCase
         $none = $this->procurementLot($this->landProcurement(['procurement_code' => 'RE-PRC-003']), ['selling_price' => null]);
         $this->assertNull($none->getSellingPricePerTsuboFormatted());
         $this->assertSame('1号地 132.69㎡（40.13坪）', $none->summaryLabel());
-    }
-
-    public static function statusCases(): array
-    {
-        return [
-            '紐付けなし' => ['none', LotStatus::OnSale],
-            '契約' => ['contract', LotStatus::Sold],
-            '契約の無い建売' => ['hs_no_contract', LotStatus::OnSale],
-            '契約のある建売' => ['hs_contract', LotStatus::Sold],
-            '注文住宅 見積り' => ['order_estimation', LotStatus::OnSale],
-            '注文住宅 契約' => ['order_contracted', LotStatus::Sold],
-            '注文住宅 着工' => ['order_construction', LotStatus::Sold],
-        ];
-    }
-
-    #[DataProvider('statusCases')]
-    public function test_the_default_status_follows_existing_links(string $case, LotStatus $expected): void
-    {
-        $p = $this->landProcurement();
-
-        if ($case === 'contract') {
-            ReContract::create([
-                'department' => 'realestate', 'contract_type' => 'procurement_land', 'status' => 'contracted',
-                'property_name' => '契約物件', 'procurement_id' => $p->id, 'created_by' => 1,
-            ]);
-        }
-        if (str_starts_with($case, 'hs_')) {
-            $hs = HsProperty::create([
-                'property_code' => 'HS-001', 'property_name' => '建売', 'status' => 'construction',
-                'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
-                'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
-            ]);
-            if ($case === 'hs_contract') {
-                HsContract::create([
-                    'property_id' => $hs->id, 'customer_name' => '山田', 'selling_price_land' => 1,
-                    'selling_price_building' => 1, 'contract_date' => '2026-11-01', 'created_by' => 1,
-                ]);
-            }
-        }
-        if (str_starts_with($case, 'order_')) {
-            HsCustomOrder::create([
-                'order_code' => 'CO-001', 'order_name' => '注文', 'customer_name' => '山田',
-                'status' => substr($case, 6), 'land_source_type' => 'procurement', 're_procurement_id' => $p->id,
-                'address' => '愛媛県松山市2-2-2', 'created_by' => 1,
-            ]);
-        }
-
-        $this->assertSame($expected, $p->fresh()->defaultLotStatus());
     }
 
     public function test_mark_sold_and_on_sale_touch_only_that_procurements_lot(): void

@@ -240,12 +240,10 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
     {
         $land = $this->landWithCost(['status' => 'sold']);
         $contract = $this->contractOn($land, null);
-        $detail = route('realestate.procurements.show', $land);
 
-        // あとから区画を 1 つ足す（契約があるので成約で作られる）
-        $this->landed($this->submit($this->parseForm($this->htmlOf($detail), 'id="lot-create-form"'), $detail));
-        $lot = ReProcurementLot::sole();
-        $this->assertSame(LotStatus::Sold, $lot->status);
+        // あとから区画を 1 つ足した形（この変更の前のデータ: 区画は成約で作られ、契約とはつながっていない。
+        // 今は追加のフォームから足すと契約につながる＝ProcurementLotLinkScreensTest）
+        $lot = $this->procurementLot($land, ['status' => 'sold']);
 
         $url = route('realestate.contracts.edit', $contract);
         $needle = 'action="' . route('realestate.contracts.update', $contract) . '"';

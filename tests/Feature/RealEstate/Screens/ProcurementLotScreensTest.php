@@ -143,19 +143,9 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $this->assertStringContainsString('badge-lot-onsale', $row);
     }
 
-    public function test_the_registration_form_starts_sold_when_the_land_is_already_sold(): void
-    {
-        $procurement = $this->landProcurement(['status' => 'sold']);
-        $this->contractFor($procurement);
-
-        $form = $this->parseForm($this->htmlOf($this->detailUrl($procurement)), self::CREATE);
-
-        $this->assertSame('sold', $form['fields']['status']);
-    }
-
     public function test_the_create_form_defaults(): void
     {
-        // 区画 0: 号地 1・土地面積・想定販売価格（土地）・defaultLotStatus()（紐付けが無いので販売中）
+        // 区画 0: 号地 1・土地面積・想定販売価格（土地）・販売中
         $first = $this->landProcurement();
         $form = $this->parseForm($this->htmlOf($this->detailUrl($first)), self::CREATE);
         $this->assertSame(
@@ -163,10 +153,9 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
             [$form['fields']['lot_number'], $form['fields']['area_sqm'], $form['fields']['selling_price'], $form['fields']['status']]
         );
 
-        // 区画 2 つ（号地 1・5）: いちばん大きい号地＋1・面積と販売価格は空・販売中（土地に契約があっても 2 つ目からは販売中）
-        $second = $this->landProcurement(['procurement_code' => 'RE-PRC-002', 'status' => 'sold']);
-        $this->contractFor($second);
-        $this->assertSame('sold', $second->defaultLotStatus()->value, '前提: この土地の defaultLotStatus() は成約');
+        // 区画 2 つ（号地 1・5）: いちばん大きい号地＋1・面積と販売価格は空・販売中
+        // （区画を選んでいない契約などがある土地はステータスの欄を出さない＝ProcurementLotLinkScreensTest）
+        $second = $this->landProcurement(['procurement_code' => 'RE-PRC-002']);
         $this->procurementLot($second, ['lot_number' => 5]);
         $this->procurementLot($second, ['lot_number' => 1]);
 

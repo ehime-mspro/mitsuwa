@@ -7,16 +7,21 @@
        （ほかのフォームに前の入力を描かない）。
      ⚠ この欄の操作の結果は lot_notice（成功）・lot_error（断り・失敗）のフラッシュで、見出しの下に出す
        （戻り先は #lot なので、レイアウトの上の帯は画面の外に隠れる。上の帯には出さない＝二重にしない）。
-     ⚠ 表は列の幅を中身で決める（既定の table-layout）。長い値は表を広げ、横スクロールの枠の中でスクロールする（MobileLayoutTest）。 --}}
+     ⚠ 表は列の幅を中身で決める（既定の table-layout）。長い値は表を広げ、横スクロールの枠の中でスクロールする（MobileLayoutTest）。
+     ⚠ 区画を選んでいない契約・建売・契約以降の注文住宅がある土地は、追加のフォームにステータスの欄の代わりに紐づけるものを出す
+       （1 件なら案内と hidden、2 件以上なら選択欄。ステータスはサーバーが決める。設計書 2026-11-22-lot-link-on-add の決まり 1・2）。
+       開いたときの候補は hidden の lot_link_candidates で送る（顔ぶれが変わったら断る。決まり 5）。 --}}
 @php
     $canEditLot = auth()->user()->role->isManagerOrAbove();
     $canDeleteLot = auth()->user()->role->isExecutive();
-    $lotKeys = ['lot_form', 'lot_number', 'area_sqm', 'selling_price', 'status', 'notes'];
+    $lotKeys = ['lot_form', 'lot_number', 'area_sqm', 'selling_price', 'status', 'notes', 'lot_link', 'lot_link_candidates'];
     $lotErrors = collect($lotKeys)->filter(fn ($key) => $errors->has($key))->flatMap(fn ($key) => $errors->get($key))->all();
     $lotFormOld = old('lot_form');
     $lotFormOld = is_string($lotFormOld) ? $lotFormOld : null;
     $createOld = $lotFormOld === 'new';
-    $createStatus = $createOld ? old('status') : $lotCreateDefaults['status'];
+    // 戻った画面で前の入力にステータスが無ければ（紐づけるものを出していた画面から、顔ぶれが変わって戻ったなど）初期値で描く
+    $createStatus = $createOld && is_string(old('status')) ? old('status') : $lotCreateDefaults['status'];
+    $createLink = $createOld && is_string(old('lot_link')) ? old('lot_link') : null;
     $lotInputStyle = 'height: 38px; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; font-size: 14px;';
     $lotLabelClass = 'block text-sm font-semibold text-gray-700 mb-1';
     $lotThClass = 'px-3 py-2.5 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 whitespace-nowrap';
@@ -195,6 +200,24 @@
                         <input id="lot-new-selling-price" type="number" name="selling_price" min="0"
                                value="{{ $createOld ? old('selling_price') : $lotCreateDefaults['selling_price'] }}" class="form-input w-full" style="{{ $lotInputStyle }}">
                     </div>
+                    <input type="hidden" name="lot_link_candidates" value="{{ $lotLinkFingerprint }}">
+                    @if(count($lotLinks) === 1)
+                    <div class="sm:col-span-2">
+                        <input type="hidden" name="lot_link" value="{{ $lotLinks[0]['key'] }}">
+                        <p id="lot-link-notice" class="text-sm text-gray-700 wrap-anywhere">この区画は{{ $lotLinks[0]['label'] }}に紐づけます（区画のステータスは「{{ $lotLinks[0]['status']->label() }}」になります）。</p>
+                    </div>
+                    @elseif(count($lotLinks) > 1)
+                    <div class="sm:col-span-2">
+                        <label for="lot-new-link" class="{{ $lotLabelClass }}">この区画に紐づけるもの<span class="text-red-600 ml-0.5">*</span></label>
+                        <select id="lot-new-link" name="lot_link" required class="form-input w-full" style="{{ $lotInputStyle }}">
+                            <option value="">— 選んでください —</option>
+                            @foreach($lotLinks as $link)
+                                <option value="{{ $link['key'] }}" @selected($createLink === $link['key'])>{{ $link['label'] }}（区画は{{ $link['status']->label() }}）</option>
+                            @endforeach
+                        </select>
+                        <p id="lot-link-notice" class="mt-1 text-xs text-gray-600 wrap-anywhere">区画を選んでいない契約・建売物件・注文住宅が {{ count($lotLinks) }} 件あります。この区画に紐づけるものを選んでください（区画を足すたびに 1 つずつ紐づけます。区画のステータスは、紐づけるものに合わせて決まります）。</p>
+                    </div>
+                    @else
                     <div>
                         <label for="lot-new-status" class="{{ $lotLabelClass }}">ステータス<span class="text-red-600 ml-0.5">*</span></label>
                         <select id="lot-new-status" name="status" class="form-input w-full" style="{{ $lotInputStyle }}">
@@ -203,6 +226,7 @@
                             @endforeach
                         </select>
                     </div>
+                    @endif
                     <div class="sm:col-span-2">
                         <label for="lot-new-notes" class="{{ $lotLabelClass }}">備考</label>
                         <input id="lot-new-notes" type="text" name="notes" value="{{ $createOld ? old('notes') : '' }}" class="form-input w-full" style="{{ $lotInputStyle }}">

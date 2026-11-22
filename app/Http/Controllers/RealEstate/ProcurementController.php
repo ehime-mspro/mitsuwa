@@ -17,6 +17,7 @@ use App\Services\RealEstate\ProcurementToProjectConverter;
 use App\Services\RealEstate\ProcurementListRow;
 use App\Services\RealEstate\ProcurementListService;
 use App\Support\DeletionBlockers;
+use App\Support\ProcurementLotLinks;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -200,16 +201,21 @@ class ProcurementController extends Controller
 
         // 土地の区画（土地のときだけ欄を出す。1 案件に何区画でも。設計書 §5.1）
         // - $lots: 号地の順 ／ $lotBlockers: 区画 id → その区画に紐づいているもの（削除を断る理由と同じ。DeletionBlockers）
-        // - $lotCreateDefaults: 追加のフォームの初期値。区画が無いときだけ土地面積・想定販売価格（土地）・defaultLotStatus()（紐付けがあれば成約）。
-        //   区画が 1 つ以上あれば「いちばん大きい号地＋1」・面積と販売価格は空・販売中（区画の無い契約がある土地で、足す区画が全部成約にならないように）
+        // - $lotCreateDefaults: 追加のフォームの初期値。区画が無いときだけ土地面積・想定販売価格（土地）。ステータスはいつも販売中
+        //   （区画を選んでいない契約などがある土地は、ステータスの欄の代わりに紐づけるものを出し、ステータスはサーバーが決める）。
+        //   区画が 1 つ以上あれば「いちばん大きい号地＋1」・面積と販売価格は空
+        // - $lotLinks: 区画を足すときに紐づけるもの（区画を選んでいない契約・建売・契約以降の注文住宅。設計書 2026-11-22-lot-link-on-add）
+        //   ／ $lotLinkFingerprint: 開いたときの候補（追加のフォームの hidden。登録のときに今の候補と比べる）
         $lots              = $procurement->property_type?->isLandOnly() ? $procurement->lots : collect();
         $lotBlockers       = DeletionBlockers::forEachProcurementLotId($lots->pluck('id')->all());
+        $lotLinks          = $procurement->property_type?->isLandOnly() ? ProcurementLotLinks::candidates($procurement) : [];
+        $lotLinkFingerprint = ProcurementLotLinks::fingerprint($lotLinks);
         $lotCreateDefaults = $lots->isEmpty()
             ? [
                 'lot_number'    => 1,
                 'area_sqm'      => $procurement->land_area_sqm,
                 'selling_price' => $procurement->target_selling_price_land,
-                'status'        => $procurement->defaultLotStatus()->value,
+                'status'        => LotStatus::OnSale->value,
             ]
             : [
                 'lot_number'    => (int) $lots->max('lot_number') + 1,
@@ -226,7 +232,7 @@ class ProcurementController extends Controller
             'costAliasMap', 'costSkipList', 'costSubtotalKws',
             'deletionBlockers', 'deletionBlockersSummary',
             'schedule', 'scheduleCanEdit',
-            'lots', 'lotBlockers', 'lotCreateDefaults', 'conversionRefusal'
+            'lots', 'lotBlockers', 'lotCreateDefaults', 'lotLinks', 'lotLinkFingerprint', 'conversionRefusal'
         ));
     }
 
