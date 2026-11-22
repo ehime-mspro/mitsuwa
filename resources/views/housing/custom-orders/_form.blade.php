@@ -180,7 +180,7 @@
                         </template>
                     </select>
                     @if($legacyLotlessProcurementId !== '')
-                        <p x-show="showsLegacyNotice()" style="display: none;" class="text-xs text-gray-500 mt-1">区画を選ばずに保存すると、今のまま（区画なし）で保存します。</p>
+                        <p x-show="showsLegacyNotice()" style="display: none;" class="text-xs text-gray-500 mt-1">区画を選ばずに保存すると、今のまま（区画なし）で保存します（「契約」へ進めるときは区画を選んでください）。</p>
                     @endif
                     @error('re_procurement_lot_id') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                 </div>

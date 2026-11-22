@@ -28,7 +28,11 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
 {
     private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
 
-    private const LEGACY_NOTICE = '区画を選ばずに保存すると、今のまま（区画なし）で保存します。';
+    /** 注文住宅の編集画面の区画なしの案内（「契約」へ進めるときは区画が要る。設計書 2026-11-22-lot-link-on-add の決まり 7） */
+    private const LEGACY_NOTICE = '区画を選ばずに保存すると、今のまま（区画なし）で保存します（「契約」へ進めるときは区画を選んでください）。';
+
+    /** 契約一覧から開く注文住宅の契約の編集の区画なしの案内（ステータスを変えない画面なので今のまま） */
+    private const LEGACY_NOTICE_CONTRACT_EDIT = '区画を選ばずに保存すると、今のまま（区画なし）で保存します。';
 
     /** 区画 1 を取っている不動産の契約の断り（契約「勝山の土地」） */
     private const TAKEN_BY_CONTRACT = 'この区画（1号地）は契約「勝山の土地」に紐づいています。ほかの区画を選んでください。';
@@ -556,6 +560,7 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
 
         $html = $this->htmlOf($url);
         $this->assertStringContainsString(self::LEGACY_NOTICE, $html);
+        $this->assertStringContainsString(self::LEGACY_NOTICE_CONTRACT_EDIT, $this->htmlOf(route('housing.contracts.edit-custom-order', $order)), '契約の編集の画面の案内が変わった');
         $run = $this->driveAlpine($html, 'customOrderForm', 'customOrderForm()', '', evaluate: ['data.showsLegacyNotice()', 'data.procurementLotMissing()']);
         $this->assertSame([true, false], $run['evaluated'], '区画の無い注文住宅の案内が出ていない（区画を選ばずに保存できる）');
         $form = $this->fill($this->customOrderEditForm($order), ['notes' => '外構は別途']);
@@ -567,19 +572,89 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         $order->refresh();
         $this->assertSame([null, 5000000, '外構は別途'], [$order->re_procurement_lot_id, $order->land_cost, $order->notes]);
 
-        // 小窓で「契約」へ進めても、区画は動かない
-        $this->changeStatusFromList($order, 'contracted', '契約')[0]->assertOk();
+        // 小窓で「契約」へは進めない（区画を選んでいない契約以降の注文住宅を新しく作らない。決まり 7）
+        $response = $this->changeStatusFromList($order, 'contracted', '契約')[0];
+        $response->assertStatus(422);
+        $this->assertSame(['success' => false, 'message' => HsCustomOrder::CONTRACT_NEEDS_LOT], $response->json());
+        $this->assertSame(['estimation', null], [$order->fresh()->status->value, $order->fresh()->re_procurement_lot_id]);
         $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
 
-        // 契約済み（土地は読み取り専用）の編集画面・契約の編集もそのまま保存できる
-        $order->refresh();
-        $html = $this->landed($this->submit($this->fill($this->customOrderEditForm($order), ['notes' => '鍵は 2 本']), $url));
-        $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
-        $contractUrl = route('housing.contracts.edit-custom-order', $order);
-        $html = $this->landed($this->submit($this->fill($this->contractEditForm($order, $this->htmlOf($contractUrl)), ['notes' => '外構は別途']), $contractUrl));
+        // 区画を選んでいない契約済みの注文住宅（この変更の前のデータ）は、土地が読み取り専用の編集画面・契約の編集をそのまま保存できる
+        $contracted = $this->orderOn($land, null, [
+            'order_code' => 'CO-002', 'status' => 'contracted', 'land_cost' => 5000000, 'is_land_cost_manual' => false,
+            'contract_date' => '2026-09-10', 'building_contract_price' => 25000000, 'building_cost' => 20000000,
+        ]);
+        $contractedUrl = route('housing.custom-orders.edit', $contracted);
+        $html = $this->landed($this->submit($this->fill($this->customOrderEditForm($contracted), ['notes' => '鍵は 2 本']), $contractedUrl));
+        $this->assertFlash($html, 'success', '注文住宅案件「CO-002」を更新しました。');
+        $contractUrl = route('housing.contracts.edit-custom-order', $contracted);
+        $html = $this->landed($this->submit($this->fill($this->contractEditForm($contracted, $this->htmlOf($contractUrl)), ['notes' => '外構は別途']), $contractUrl));
         $this->assertFlash($html, 'success', '契約を更新しました。');
-        $order->refresh();
-        $this->assertSame([null, 5000000, 'contracted'], [$order->re_procurement_lot_id, $order->land_cost, $order->status->value]);
+        $contracted->refresh();
+        $this->assertSame([null, 5000000, 'contracted'], [$contracted->re_procurement_lot_id, $contracted->land_cost, $contracted->status->value]);
+    }
+
+    // ============================================================
+    // 区画を選んでいない注文住宅を「契約」へ進めさせない（設計書 2026-11-22-lot-link-on-add の決まり 7）
+    // ============================================================
+
+    public function test_the_popup_refuses_contracted_for_an_order_without_a_lot_on_a_land_with_lots(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $order = $this->orderOn($land, null, ['status' => 'estimation']);
+
+        [$response, $after] = $this->changeStatusFromList($order, 'contracted', '契約');
+
+        $response->assertStatus(422);
+        $this->assertSame(['success' => false, 'message' => HsCustomOrder::CONTRACT_NEEDS_LOT], $response->json(), '断りの応答の形が違う（errors を付けると小窓が文を 2 回出す）');
+        $this->assertSame(['区画のある土地で区画を選んでいないため、「契約」へ進められません。編集画面で区画を選んでから進めてください。'], $after['alerts']);
+        $this->assertSame([], $after['navigations'], '断られたのに画面を読み込み直した');
+        $this->assertSame('estimation', $order->fresh()->status->value);
+        $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
+    }
+
+    /** 直しすぎの守り: 区画の無い土地の区画なしの注文住宅は、今どおり「契約」へ進められる（区画を足したときにつながる） */
+    public function test_the_popup_still_moves_an_order_on_a_land_without_lots(): void
+    {
+        $land = $this->landProcurement();
+        $order = $this->orderOn($land, null, ['status' => 'estimation']);
+
+        $this->changeStatusFromList($order, 'contracted', '契約')[0]->assertOk();
+
+        $this->assertSame('contracted', $order->fresh()->status->value);
+    }
+
+    /** 直しすぎの守り: 区画を選んでいない契約済みの注文住宅（この変更の前のデータ）の「契約」→「着工」は断らない（「契約」をまたがない） */
+    public function test_a_contracted_order_without_a_lot_moves_on_from_the_popup(): void
+    {
+        [$land] = $this->twoLotLand();
+        $order = $this->orderOn($land, null, ['status' => 'contracted']);
+
+        $this->changeStatusFromList($order, 'construction', '着工')[0]->assertOk();
+
+        $this->assertSame('construction', $order->fresh()->status->value);
+    }
+
+    public function test_the_edit_screen_refuses_contracted_until_a_lot_is_chosen(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $order = $this->orderOn($land, null, ['status' => 'estimation']);
+        $url = route('housing.custom-orders.edit', $order);
+
+        $html = $this->landed($this->submit($this->fill($this->customOrderEditForm($order), ['status' => 'contracted']), $url));
+
+        $this->assertErrorItem($html, '区画のある土地で区画を選んでいないため、「契約」へ進められません。区画を選んでください。');
+        $this->assertSame(['estimation', null], [$order->fresh()->status->value, $order->fresh()->re_procurement_lot_id]);
+
+        // 区画を選べば進められる（その区画だけが成約）
+        $this->flushSession();
+        $form = $this->fill($this->customOrderEditForm($order, 'data.selectedProcurementLotId = "' . $first->id . '"; data.onProcurementLotChange();'), ['status' => 'contracted']);
+        $this->assertSame((string) $first->id, $form['fields']['re_procurement_lot_id'] ?? null, 'テストの前提: 区画を選べていない');
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を更新しました。');
+        $this->assertSame(['contracted', $first->id], [$order->fresh()->status->value, $order->fresh()->re_procurement_lot_id]);
+        $this->assertSame(['sold', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
     }
 
     /** Review Focus 5 の注文住宅: 2 区画以上の土地で区画の 1 つに販売価格が無い → 土地原価の自動の値は空（区画を選ぶ前は「計算できません」を出さない） */

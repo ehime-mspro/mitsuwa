@@ -263,6 +263,11 @@ class CustomOrderController extends Controller
         // 「契約」以降どうしの変更（契約 → 着工 など）は区画を取り直さないので見ない（区画の連動 syncLotStatus() と同じ「またぐ」とき）。
         // ⚠ 一覧の小窓は 422 の message をそのまま alert に出す。errors を付けない（付けると同じ文が 2 回出る。Review Focus 2）
         if ($newStatus->isContractedOrLater() && ! $oldStatus->isContractedOrLater()) {
+            // 区画のある土地で区画を選んでいない注文住宅は進めない（小窓では区画を選べないので編集画面へ案内する。
+            // 設計書 2026-11-22-lot-link-on-add の決まり 7）
+            if (ProcurementLotClaims::lotMissing($customOrder)) {
+                return response()->json(['success' => false, 'message' => HsCustomOrder::CONTRACT_NEEDS_LOT], 422);
+            }
             $refusal = ProcurementLotClaims::refusal($customOrder->re_procurement_lot_id, $customOrder, true);
             if ($refusal !== null) {
                 return response()->json(['success' => false, 'message' => $refusal], 422);
@@ -415,8 +420,17 @@ class CustomOrderController extends Controller
         $isProcurement = $request->input('land_source_type') === HousingLandSourceType::Procurement->value;
         $chosen = $request->input('re_procurement_id');
         $chosenId = is_int($chosen) || (is_string($chosen) && $chosen !== '' && ctype_digit($chosen)) ? (int) $chosen : 0;
-        // 区画のある土地では必須（区画の無い保存済みの注文住宅＝#21 の形は、同じ仕入れ案件のままなら選ばずに保存できる。requiresLot()）
-        $lotRequired = $isProcurement && ProcurementLotClaims::requiresLot($chosen, $current);
+        // この保存で区画を取る＝「契約」をまたいで進める（保存済みが「契約」以降なら、今の区画はもう持っている。
+        // そのまま保存するだけなら断らない。Bug #130。土地はそのとき読み取り専用で、変えると refusesLandChange() が断る）
+        $status = $request->input('status');
+        $selfTakes = is_string($status)
+            && (CustomOrderStatus::tryFrom($status)?->isContractedOrLater() ?? false)
+            && ! ($current?->isLandLockedByContract() ?? false);
+        // 区画のある土地では必須（区画の無い保存済みの注文住宅＝#21 の形は、同じ仕入れ案件のままなら選ばずに保存できる。requiresLot()）。
+        // ただし「契約」へ進める保存には、その例外を効かせない（区画を選んでいない契約以降の注文住宅を新しく作らない。
+        // 設計書 2026-11-22-lot-link-on-add の決まり 7）
+        $lotRequired = $isProcurement && ProcurementLotClaims::requiresLot($chosen, $selfTakes ? null : $current);
+        $lotNeededToEnterContract = $lotRequired && ! ProcurementLotClaims::requiresLot($chosen, $current);
 
         return Validator::make($request->all(), [
             // 買主（登録・編集とも必須。判断待ち ⑥）。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121）
@@ -459,11 +473,11 @@ class CustomOrderController extends Controller
         ], [
             're_project_lot_id.required_if' => '土地種別が分譲地区画のときは、区画を選んでください。',
             're_procurement_id.required_if' => '土地種別が仕入れ案件のときは、仕入れ案件を選んでください。',
-            're_procurement_lot_id.required' => '区画を選んでください。',
+            're_procurement_lot_id.required' => $lotNeededToEnterContract ? HsCustomOrder::CONTRACT_NEEDS_LOT_HERE : '区画を選んでください。',
         ], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「住所」）
             'address' => '所在地',
-        ])->after(function ($validator) use ($current, $request, $isProcurement) {
+        ])->after(function ($validator) use ($current, $request, $isProcurement, $selfTakes) {
             if ($current?->refusesLandChange($request->all())) {
                 $validator->errors()->add('land_source_type', HsCustomOrder::LAND_LOCKED_BY_CONTRACT);
             }
@@ -476,12 +490,7 @@ class CustomOrderController extends Controller
                 || $validator->errors()->has('re_procurement_id')) {
                 return;
             }
-            // この保存で区画を取る＝「契約」をまたいで進める（保存済みが「契約」以降なら、今の区画はもう持っている。
-            // そのまま保存するだけなら断らない。Bug #130。土地はそのとき読み取り専用で、変えると refusesLandChange() が断る）
-            $status = $request->input('status');
-            $selfTakes = is_string($status)
-                && (CustomOrderStatus::tryFrom($status)?->isContractedOrLater() ?? false)
-                && ! ($current?->isLandLockedByContract() ?? false);
+            // この保存で区画を取るか（$selfTakes）は入力チェックの前に求めた
             $refusal = ProcurementLotClaims::refusal($request->input('re_procurement_lot_id'), $current, $selfTakes);
             if ($refusal !== null) {
                 $validator->errors()->add('re_procurement_lot_id', $refusal);
