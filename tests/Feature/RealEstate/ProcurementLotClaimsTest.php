@@ -2,12 +2,19 @@
 
 namespace Tests\Feature\RealEstate;
 
+use App\Enums\LotStatus;
+use App\Models\HsContract;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
+use App\Models\User;
 use App\Support\ProcurementLotClaims;
+use App\Support\ProcurementLotLinks;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\RealEstate\Screens\RealEstateScreenTestCase;
 
 /**
@@ -238,5 +245,164 @@ class ProcurementLotClaimsTest extends RealEstateScreenTestCase
         $this->assertNull(ProcurementLotClaims::takerLabel($this->lots[1]->id, $this->contract));
         $this->assertNull(ProcurementLotClaims::takerLabel($this->lots[2]->id, $this->property));
         $this->assertNull(ProcurementLotClaims::takerLabel($this->lots[4]->id, $this->contracted));
+    }
+
+    // ================================================================
+    // 区画を足すときに紐づけるもの（区画を選んでいないもの・候補・つなぎ方）
+    // ================================================================
+
+    /** 区画の無い土地（RE-PRC-002） */
+    private function lotlessLand(string $code = 'RE-PRC-002'): ReProcurement
+    {
+        return $this->landProcurement(['procurement_code' => $code, 'property_name' => '区画の無い土地 ' . $code]);
+    }
+
+    /** 建売の契約を付ける（契約のある建売） */
+    private function contractProperty(HsProperty $property): void
+    {
+        HsContract::create([
+            'property_id' => $property->id, 'customer_name' => '山田', 'selling_price_land' => 1,
+            'selling_price_building' => 1, 'contract_date' => '2026-11-01', 'created_by' => $this->user->id,
+        ]);
+    }
+
+    /** @return array<int, array{0: string, 1: int}> [クラス名, id] */
+    private function described(array $owners): array
+    {
+        return array_map(fn (Model $owner) => [class_basename($owner), (int) $owner->id], $owners);
+    }
+
+    public function test_unlinked_takers_are_the_owners_without_a_lot_on_that_land(): void
+    {
+        $land = $this->lotlessLand();
+        $contract = $this->contractOn($land, null);
+        $withoutContract = $this->propertyOn($land, null, 'HS-101');
+        $withContract = $this->propertyOn($land, null, 'HS-102');
+        $this->contractProperty($withContract);
+        $contracted = $this->orderOn($land, null, 'contracted', 'CO-101', '契約の注文住宅');
+        $this->orderOn($land, null, 'estimation', 'CO-102', '見積りの注文住宅');
+        $construction = $this->orderOn($land, null, 'construction', 'CO-103', '着工の注文住宅');
+
+        // 数えないもの: 区画を選んだもの（土台の土地の 5 つ）・ほかの土地の区画の無い契約・
+        // 種別がお客様の土地なのに re_procurement_id だけ残った建売
+        $this->contractOn($this->lotlessLand('RE-PRC-003'), null, '別の土地');
+        HsProperty::create([
+            'property_code' => 'HS-109', 'property_name' => 'お客様の土地の建売', 'status' => 'construction',
+            'land_source_type' => 'customer_land', 're_procurement_id' => $land->id,
+            'address' => '愛媛県松山市勝山町9-9', 'created_by' => $this->user->id,
+        ]);
+
+        $this->assertSame(
+            $this->described([$contract, $withoutContract, $withContract, $contracted, $construction]),
+            $this->described(ProcurementLotClaims::unlinkedTakers($land))
+        );
+        $this->assertSame([], ProcurementLotClaims::unlinkedTakers($this->land), '区画を選んだものしか無い土地に候補が出た');
+    }
+
+    public function test_lot_missing(): void
+    {
+        $lotless = $this->lotlessLand();
+        $this->assertFalse(ProcurementLotClaims::lotMissing($this->contractOn($lotless, null)), '区画の無い土地の契約');
+
+        $this->assertTrue(ProcurementLotClaims::lotMissing($this->contractOn($this->land, null, '区画を選んでいない契約')), '区画のある土地の区画なしの契約');
+        $this->assertTrue(ProcurementLotClaims::lotMissing($this->orderOn($this->land, null, 'estimation', 'CO-201', '区画なしの見積り')), '区画のある土地の区画なしの見積り');
+        $this->assertFalse(ProcurementLotClaims::lotMissing($this->estimate), '区画を選んだ見積り');
+
+        $customerLand = HsCustomOrder::create([
+            'order_code' => 'CO-202', 'order_name' => 'お客様の土地', 'status' => 'estimation', 'customer_name' => '大西 花子',
+            'land_source_type' => 'customer_land', 're_procurement_id' => $this->land->id,
+            'address' => '愛媛県松山市勝山町3-3', 'created_by' => $this->user->id,
+        ]);
+        $this->assertFalse(ProcurementLotClaims::lotMissing($customerLand), '種別がお客様の土地の注文住宅');
+    }
+
+    public static function linkedStatuses(): array
+    {
+        return [
+            '契約' => ['contract', LotStatus::Sold],
+            '契約の無い建売' => ['hs_no_contract', LotStatus::OnSale],
+            '契約のある建売' => ['hs_contract', LotStatus::Sold],
+            '注文住宅 契約' => ['order_contracted', LotStatus::Sold],
+            '注文住宅 着工' => ['order_construction', LotStatus::Sold],
+        ];
+    }
+
+    #[DataProvider('linkedStatuses')]
+    public function test_the_linked_lot_status_follows_the_owner(string $case, LotStatus $expected): void
+    {
+        $land = $this->lotlessLand();
+        match ($case) {
+            'contract' => $this->contractOn($land, null),
+            'hs_no_contract' => $this->propertyOn($land, null, 'HS-101'),
+            'hs_contract' => $this->contractProperty($this->propertyOn($land, null, 'HS-101')),
+            'order_contracted' => $this->orderOn($land, null, 'contracted', 'CO-101', '注文'),
+            'order_construction' => $this->orderOn($land, null, 'construction', 'CO-101', '注文'),
+        };
+
+        $candidates = ProcurementLotLinks::candidates($land);
+
+        $this->assertCount(1, $candidates);
+        $this->assertSame($expected, $candidates[0]['status']);
+    }
+
+    public function test_candidates_carry_the_key_and_the_label(): void
+    {
+        $land = $this->lotlessLand();
+        $contract = $this->contractOn($land, null);
+        $property = $this->propertyOn($land, null, 'HS-101');
+        $order = $this->orderOn($land, null, 'contracted', 'CO-102', '勝山の注文住宅');
+
+        $candidates = ProcurementLotLinks::candidates($land);
+
+        $this->assertSame(
+            ['contract:' . $contract->id, 'property:' . $property->id, 'order:' . $order->id],
+            array_column($candidates, 'key')
+        );
+        $this->assertSame(
+            ['契約「勝山の土地（山田 太郎 様）」', '建売物件「HS-101 勝山の建売」', '注文住宅「CO-102 勝山の注文住宅」'],
+            array_column($candidates, 'label')
+        );
+        $this->assertSame(
+            $this->described([$contract, $property, $order]),
+            $this->described(array_column($candidates, 'owner'))
+        );
+        $this->assertSame(
+            'contract:' . $contract->id . ',property:' . $property->id . ',order:' . $order->id,
+            ProcurementLotLinks::fingerprint($candidates)
+        );
+
+        $this->assertSame([], ProcurementLotLinks::candidates($this->land));
+        $this->assertSame('', ProcurementLotLinks::fingerprint([]));
+    }
+
+    /** つなぐときに書くのは区画の列だけ（更新日時・更新者・原価・土地原価・ステータスは変えない。設計書の決まり 6） */
+    public function test_link_writes_only_the_lot_column(): void
+    {
+        $land = $this->lotlessLand();
+        $other = User::factory()->create();
+        $contract = $this->contractOn($land, null);
+        $contract->update(['cost_amount' => 9000000, 'updated_by' => $other->id]);
+        $property = $this->propertyOn($land, null, 'HS-101');
+        $property->update(['land_cost' => 5000000, 'is_land_cost_manual' => false, 'updated_by' => $other->id]);
+        $order = $this->orderOn($land, null, 'contracted', 'CO-101', '勝山の注文住宅');
+        $owners = [[$contract, 'procurement_lot_id'], [$property, 're_procurement_lot_id'], [$order, 're_procurement_lot_id']];
+
+        $lots = [];
+        $before = [];
+        foreach ($owners as $i => [$owner, $column]) {
+            $lots[$i] = $this->procurementLot($land, ['lot_number' => $i + 1]);
+            $before[$i] = Arr::except($owner->fresh()->getAttributes(), [$column]);
+        }
+
+        $this->travel(1)->days();
+        foreach ($owners as $i => [$owner]) {
+            ProcurementLotLinks::link($lots[$i], $owner);
+        }
+
+        foreach ($owners as $i => [$owner, $column]) {
+            $fresh = $owner->fresh();
+            $this->assertSame($lots[$i]->id, (int) $fresh->getAttribute($column), class_basename($owner) . ' の区画の列');
+            $this->assertSame($before[$i], Arr::except($fresh->getAttributes(), [$column]), class_basename($owner) . ' のほかの列が変わった');
+        }
     }
 }

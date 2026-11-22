@@ -147,6 +147,52 @@ final class ProcurementLotClaims
     }
 
     /**
+     * その土地を土地元にしていて、区画を選んでいない「区画を取るもの」（不動産の契約・建売（契約の前も）・契約以降の注文住宅）。
+     * 顔ぶれは takers() と同じ（見積り以前の注文住宅は入れない）。住宅事業は保存済みの種別が「仕入れ案件」のものだけ。
+     * 並びは契約・建売・注文住宅の順、それぞれ id の順。
+     * 区画を足すとき（ProcurementLotLinks）が使う（設計書 2026-11-22-lot-link-on-add の「言葉」）。
+     *
+     * @return array<int, ReContract|HsProperty|HsCustomOrder>
+     */
+    public static function unlinkedTakers(ReProcurement $procurement): array
+    {
+        $contracts = ReContract::query()
+            ->where('procurement_id', $procurement->id)
+            ->whereNull('procurement_lot_id')
+            ->orderBy('id')
+            ->get();
+        $properties = HsProperty::query()
+            ->where('land_source_type', HousingLandSourceType::Procurement->value)
+            ->where('re_procurement_id', $procurement->id)
+            ->whereNull('re_procurement_lot_id')
+            ->orderBy('id')
+            ->get();
+        $orders = HsCustomOrder::query()
+            ->where('land_source_type', HousingLandSourceType::Procurement->value)
+            ->where('re_procurement_id', $procurement->id)
+            ->whereNull('re_procurement_lot_id')
+            ->whereIn('status', self::contractedOrderStatuses())
+            ->orderBy('id')
+            ->get();
+
+        return [...$contracts->all(), ...$properties->all(), ...$orders->all()];
+    }
+
+    /**
+     * 保存済みの土地元が区画のある土地なのに、保存済みの区画が空か（区画を選んでいない注文住宅を「契約」へ進めさせない。
+     * 設計書 2026-11-22-lot-link-on-add の決まり 7）。保存済みの値で読む（fill() しただけの値は見ない）。
+     */
+    public static function lotMissing(ReContract|HsProperty|HsCustomOrder $owner): bool
+    {
+        $procurementId = self::savedProcurementId($owner);
+        if ($procurementId === null || self::savedLotId($owner) !== null) {
+            return false;
+        }
+
+        return ReProcurementLot::where('procurement_id', $procurementId)->exists();
+    }
+
+    /**
      * 区画を取っているものを引く問い合わせ [契約, 建売, 契約以降の注文住宅]（$except 自身は除く）。
      *
      * @param  array<int, int>  $lotIds
