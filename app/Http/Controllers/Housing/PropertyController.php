@@ -270,10 +270,8 @@ class PropertyController extends Controller
     {
         $code = $property->property_code;
 
-        // ファイルの物理削除
-        foreach ($property->files as $file) {
-            Storage::disk('public')->delete($file->file_path);
-        }
+        // 消すファイルの保存先は先に集める（行は下の削除の連鎖で消える）
+        $paths = $property->files->pluck('file_path')->all();
 
         // 工程は親に完全従属するので一緒に消す（設計書 §3.5）。
         // ⚠ DeletionBlockers には足さない（足すと工程を書いた案件が二度と消せなくなる）。
@@ -293,6 +291,12 @@ class PropertyController extends Controller
             // 契約・ファイルはcascadeOnDeleteで自動削除
             $property->delete();
         });
+
+        // ファイルの中身は確定したあとで消す（先に消すと、削除が落ちたとき行だけ残って中身の無いファイルになる。
+        // docs/RULES.md Bug #147 の追記）
+        foreach ($paths as $path) {
+            Storage::disk('public')->delete($path);
+        }
 
         return redirect()->route('housing.properties.index')
             ->with('success', "建売物件「{$code}」を削除しました。");
