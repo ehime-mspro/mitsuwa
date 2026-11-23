@@ -35,12 +35,12 @@ class StaleLotLinkEditTest extends HousingScreenTestCase
             'action="' . route('housing.properties.update', $property) . '"', 'housingPropertyForm');
     }
 
-    /** 区画を選んでいない建売（土地原価は自動で 30,000,000 円） */
+    /** 区画を選んでいない建売（土地原価は自動・保存値 12,345,678 円。紐付け先から計算すると 30,000,000 円なので、計算し直したかが値で分かる） */
     private function lotlessProperty(ReProcurement $land): HsProperty
     {
         return $this->property([
             'land_source_type' => 'procurement', 're_procurement_id' => $land->id,
-            'is_land_cost_manual' => false, 'land_cost' => 30000000,
+            'is_land_cost_manual' => false, 'land_cost' => 12345678,
         ]);
     }
 
@@ -56,7 +56,7 @@ class StaleLotLinkEditTest extends HousingScreenTestCase
 
         $this->assertFlash($html, 'success', '建売物件「HS-001」を更新しました。');
         $property->refresh();
-        $this->assertSame([$lot->id, '外構は別途', 30000000], [(int) $property->re_procurement_lot_id, $property->notes, $property->land_cost]);
+        $this->assertSame([$lot->id, '外構は別途', 12345678], [(int) $property->re_procurement_lot_id, $property->notes, $property->land_cost]);
     }
 
     public function test_a_stale_edit_of_a_sold_property_saves(): void
