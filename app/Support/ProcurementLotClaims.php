@@ -20,8 +20,9 @@ use Illuminate\Database\Eloquent\Model;
  * 1 つの区画を取れるのは、不動産の契約・建売（契約の前から）・契約以降の注文住宅のうち 1 件だけ。
  * 見積り以前の注文住宅は同じ区画に何件付いてもよい（「契約」へ進むときに断る＝refusal() の $selfTakes）。
  *
- * ⚠ 取られているかは**紐付け**で決め、区画のステータスでは決めない（#21 のように区画の無い契約がある土地で、
- *   最初の区画が「成約」で作られても、その契約から選べるように）。
+ * ⚠ 取られているかは**紐付け**で決め、区画のステータスでは決めない（区画のステータスは区画の表で手で変えられ、
+ *   紐付けと食い違うことがあるため。区画を選んでいない契約などがある土地に区画を足すときは、
+ *   ProcurementLotLinks がそのうち 1 つを足す区画につなぐ＝Bug #146）。
  * ⚠ 「持ち主」（$current・$except）は ReContract・HsProperty・HsCustomOrder。列名の違い
  *   （契約は procurement_id / procurement_lot_id、住宅事業は re_procurement_id / re_procurement_lot_id）はこのクラスの中で吸収する。
  * ⚠ 持ち主の「今」は保存済みの値（getRawOriginal()）で読む。fill() しただけの値で「変えていない」とみなさない。

@@ -391,3 +391,20 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | 2 件目を消し区画を `sold` に戻してから、区画を選んでいない契約を削除 | 区画は `sold` のまま・土地も `sold`（設計書の ②） |
 
 注文住宅: 区画のある土地で区画の無い見積りの注文住宅を一覧の小窓で「契約」へ進めると 200 で通る（既存の `test_a_legacy_order_without_a_lot_saves_as_is` が今の形として固定している）。
+
+### Task 4 の確かめ（2026-11-22〜23）
+
+- 全件（Step 1・`ecc7c897`）: **OK (5606 tests, 66848 assertions)**（`--display-phpunit-deprecations`・警告なし・3 分 56 秒・177.50 MB）／ コンパイル済みビュー **327 本 / INVALID 0**
+- ⚠ 全件で `ProcurementLotStatusSyncTest::test_a_custom_order_crossing_contracted_moves_the_lot` の最後の段（区画のある土地の区画なしの見積りを小窓で「契約」へ）が 422 で落ちた。この計画は決まり 7 の確かめを住宅事業のテストだけにしていた → 決まり 7 のとおり「422・`CONTRACT_NEEDS_LOT`・見積りのまま・区画は動かない」に直した（`ecc7c897`）
+- 変異（Step 2・作業場所の `.claude/route-coverage-tools/mutate/run_lla.py`・表は `specs_lot_link_on_add.py`。流したテストは `tests/Feature/RealEstate`・`tests/Feature/Housing`・`OldInputRuleCoverageTest`・`JapaneseValidationMessagesTest`）: 表の 24 通りすべて期待どおり（C0〜V5 の 20 通りは 2026-11-22・結果 `results-lot-link-on-add.part1-C0-V5.txt`／H1〜H4 は 2026-11-23・結果 `results-lot-link-on-add.txt`）。緑のまま通った変異 0。H4 は狙った `test_a_legacy_order_without_a_lot_saves_as_is` のほかに `test_a_contracted_order_is_not_refused_for_its_own_lot` も同じ理由で落ちた（検出は正しい）
+- 実ブラウザ（Step 3・2026-11-23・`.superpowers/sdd/2026-11-22-lot-link-on-add/lla-env.php` の使い捨て SQLite ＋ `artisan serve` ＋ Playwright・作業場所で `vite build`＝CSS は本番と同じ `app-o1yvrcrl.css`）:
+
+| 土地 | 見たこと | 結果 |
+|---|---|---|
+| A（#21 の形） | 追加のフォーム → 登録 → 契約を削除 | 「この区画は契約「勝山の土地（山田 太郎 様）」に紐づけます（区画のステータスは「成約」になります）。」・ステータスの欄なし → 帯「区画を登録しました（契約「…」をこの区画に紐づけました）。」・区画は成約・「紐づいているもの」に契約 → 削除で区画も土地も販売中 |
+| B（区画なしの建売 2・契約の注文住宅 1・見積りの注文住宅 1） | 選択欄 → 選ばずに押す → required を外して送る → 3 件を順につなぐ | 選択肢 3 件（見積りの CO-002 は出ない）→ ブラウザが「リスト内の項目を選択してください。」で止める → サーバーが「この区画に紐づけるものを選んでください。」・備考は残る → HS-002（契約あり）は成約・HS-001 は販売中・残り 1 件は案内に変わり CO-001 は成約 → 全部つながると追加のフォームはステータスの欄（初期値 販売中） |
+| C（候補なし） | 開いたあとで契約 2 件を DB に足してから送る | 顔ぶれの文・区画は作られない・打った値は残り今の 2 件の選択欄 → 選び直して登録できる |
+| D（区画あり・区画なしの見積り CO-003） | 注文住宅の一覧の小窓で「契約」へ | alert「区画のある土地で区画を選んでいないため、「契約」へ進められません。編集画面で区画を選んでから進めてください。」・見積りのまま・区画は販売中のまま |
+
+  375px・1440px とも `main` の横スクロール 0・案内と断りの文と選択欄は枠の中・コンソールのエラーは意図した 422 の 1 件だけ
+- 最後の点検（Step 4・2026-11-23・いちばん強いモデル・読み取りだけ・`review-790f502f..ecc7c897.diff`）: 「マージしてよい」・Critical 0・Important 0・Minor 6。古くなったコメント 2 か所は記録のコミットで直した。ほかの Minor は BACKLOG の節の範囲外と利用者に伝えることに書いた
