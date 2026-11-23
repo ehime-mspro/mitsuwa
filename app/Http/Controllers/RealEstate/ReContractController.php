@@ -26,6 +26,13 @@ use Illuminate\Validation\Rule;
 class ReContractController extends Controller
 {
     /**
+     * 編集画面で区画を選ばずに送られ、この契約がもう同じ土地の区画に紐づいているときの文（:number は号地）。
+     * 区画の無い土地の契約の編集画面を開いたあとで、区画を足してこの契約につないだ（Bug #146）ときに出る
+     * （設計書 2026-11-23-lot-link-followups の B3。区画を選べる画面なので、区画を補わずに文で知らせる）。
+     */
+    public const LOT_HELD = '区画を選んでください。この契約は今、区画（:number号地）に紐づいています（画面を開いたあとで紐づけられた可能性があります）。';
+
+    /**
      * 契約一覧
      */
     public function index(Request $request)
@@ -737,6 +744,21 @@ class ReContractController extends Controller
              - (int) ($validated['cost_amount'] ?? 0);
     }
 
+    /**
+     * 区画の必須の文。保存済みの契約が選んだ土地と同じ土地の区画にもう紐づいていれば、その号地を知らせる（LOT_HELD）。
+     * それ以外は「区画を選んでください。」。⚠ 選んだ案件は入力チェックの前に読むので、数字のときだけ比べる（Bug #121）
+     */
+    private function lotRequiredMessage(Request $request, ?ReContract $current): string
+    {
+        $chosen = $request->input('procurement_id');
+        $heldLotId = $current?->getRawOriginal('procurement_lot_id');
+        $sameLand = (is_int($chosen) || (is_string($chosen) && $chosen !== '' && ctype_digit($chosen)))
+            && (int) $chosen === (int) $current?->getRawOriginal('procurement_id');
+        $held = $sameLand && $heldLotId !== null ? ReProcurementLot::find((int) $heldLotId) : null;
+
+        return $held === null ? '区画を選んでください。' : strtr(self::LOT_HELD, [':number' => (string) $held->lot_number]);
+    }
+
     private function validateContract(Request $request, ReContractType $contractType, ?ReContract $current = null): array
     {
         $rules = [
@@ -811,7 +833,7 @@ class ReContractController extends Controller
         // 1 回の入力チェックで、区画が取られている断りもほかの誤りと一緒に出す（Bug #112）
         $validated = Validator::make($request->all(), $rules, [
             'procurement_id.unique'       => 'この仕入れ案件にはすでに契約があります。契約の一覧で確かめてください。',
-            'procurement_lot_id.required' => '区画を選んでください。',
+            'procurement_lot_id.required' => $this->lotRequiredMessage($request, $current),
         ], ['address' => '所在地'])->after(function ($validator) use ($request, $contractType, $current) {
             // 1 つの区画に付けられる契約・建売・契約以降の注文住宅は 1 件だけ（設計書 §5.3）。区画や案件にほかの誤りがあれば見ない。
             // 契約には「この保存で区画を取る」瞬間が無い（新しく選ぶ・付け替える区画は refusal() が「変えた」で見る）ので $selfTakes は false。

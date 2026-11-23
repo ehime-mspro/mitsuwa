@@ -3,6 +3,7 @@
 namespace Tests\Feature\RealEstate\Screens;
 
 use App\Enums\LotStatus;
+use App\Http\Controllers\RealEstate\ReContractController;
 use App\Models\HsProperty;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
@@ -404,6 +405,38 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
         $this->assertSame([$first->id, $second->id], $this->lotOptionIds($html, 'contractEditForm', $land, 'contractEditForm()'), '今の区画が選択肢から消えた');
         $form = $this->browserForm($html, $this->editNeedle($contract), 'contractEditForm');
         $this->assertSame([(string) $first->id, '20000000', '20000000'], $this->lotAndAmounts($form), '今の区画が選ばれていない（か金額が外れた）');
+    }
+
+    /**
+     * B3（設計書 2026-11-23-lot-link-followups）: 区画の無い土地の契約の編集画面を開いたあとで、区画を足してその契約に
+     * つないだ（Bug #146）。区画を選べる画面なので補わず、今どの区画に紐づいているかを文で知らせて断る。
+     * 戻った画面ではその区画が選ばれていて、もう一度送ると保存できる。
+     */
+    public function test_a_stale_contract_edit_tells_which_lot_it_now_has(): void
+    {
+        $land = $this->landWithCost();
+        $contract = $this->contractOn($land, null);
+        $url = route('realestate.contracts.edit', $contract);
+        $stale = $this->fill($this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm'), ['memo' => '鍵は 2 本']);
+
+        $detail = route('realestate.procurements.show', $land);
+        $this->submit($this->parseForm($this->htmlOf($detail), 'id="lot-create-form"'), $detail)->assertRedirect($detail . '#lot');
+        $lot = ReProcurementLot::where('procurement_id', $land->id)->sole();
+        $this->assertSame($lot->id, (int) $contract->fresh()->procurement_lot_id, '区画を足しても契約につながっていない');
+
+        $response = $this->submit($stale, $url);
+        $response->assertRedirect($url);
+        $html = $this->landed($response);
+
+        $this->assertErrorItem($html, strtr(ReContractController::LOT_HELD, [':number' => '1']));
+        $this->assertNull($contract->fresh()->memo);
+
+        $again = $this->browserForm($html, $this->editNeedle($contract), 'contractEditForm');
+        $this->assertSame([(string) $lot->id, '鍵は 2 本'], [$again['fields']['procurement_lot_id'] ?? null, $again['fields']['memo'] ?? null]);
+        $html = $this->landed($this->submit($again, $url));
+
+        $this->assertFlash($html, 'success', '契約情報を更新しました。');
+        $this->assertSame([$lot->id, '鍵は 2 本'], [(int) $contract->fresh()->procurement_lot_id, $contract->fresh()->memo]);
     }
 
     /** M2・Ruling 15: 同じ食い違ったデータでも、何も変えない保存は断らない（契約には「この保存で区画を取る」瞬間が無い） */
