@@ -19,6 +19,7 @@ use App\Models\ReProcurement;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -274,10 +275,19 @@ class PropertyController extends Controller
         // ⚠ morphMany 経由で消すこと。schedulable_id だけで消すと、別テーブルの
         //   同じ id の工程まで巻き添えになる。
         // ⚠ 削除ブロックの判定より**後**に置くこと（ブロックされたのに工程だけ消える事故を防ぐ）。
-        $property->scheduleSteps()->delete();
+        // 区画を戻すことと削除は 1 つのトランザクション（途中で落ちたら区画も戻らない）
+        DB::transaction(function () use ($property) {
+            // 契約のある建売なら、その区画を販売中に戻す（設計書 2026-11-23-lot-link-followups の A）。
+            // ⚠ 削除の前に契約の有無を見る（契約は下の削除の連鎖で消え、契約の削除の処理は動かない）
+            if ($property->contract()->exists()) {
+                $property->releaseLots();
+            }
 
-        // 契約・ファイルはcascadeOnDeleteで自動削除
-        $property->delete();
+            $property->scheduleSteps()->delete();
+
+            // 契約・ファイルはcascadeOnDeleteで自動削除
+            $property->delete();
+        });
 
         return redirect()->route('housing.properties.index')
             ->with('success', "建売物件「{$code}」を削除しました。");

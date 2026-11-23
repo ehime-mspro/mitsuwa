@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\HousingLandSourceType;
 use App\Enums\HousingPropertyStatus;
+use App\Enums\LotStatus;
 use App\Models\Concerns\HasScheduleSteps;
 use App\Models\Concerns\LocksLandAfterContract;
 use App\Support\AreaConverter;
@@ -147,6 +148,24 @@ class HsProperty extends Model
     public function isLandLockedByContract(): bool
     {
         return $this->contract()->exists();
+    }
+
+    /**
+     * 契約が無くなるとき（契約の削除・契約のある建売の削除）、この建売の区画を販売中に戻す。
+     * 土地の区画はその区画だけを販売中にして仕入れ案件のステータスを区画から集約し（区画の無い建売は何もしない）、
+     * 分譲地の区画は販売中にして分譲地のステータスを集約する（設計書 2026-11-23-lot-link-followups の A）。
+     */
+    public function releaseLots(): void
+    {
+        ReProcurementLot::markOnSale($this->re_procurement_lot_id ? (int) $this->re_procurement_lot_id : null);
+
+        if ($this->re_project_lot_id) {
+            $lot = $this->projectLot;
+            if ($lot) {
+                $lot->update(['status' => LotStatus::OnSale->value]);
+                $lot->project?->syncStatusFromLots();
+            }
+        }
     }
 
     /**

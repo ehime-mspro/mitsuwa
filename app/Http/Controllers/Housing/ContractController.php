@@ -146,8 +146,8 @@ class ContractController extends Controller
 
         $contract->delete();
 
-        // 分譲地区画のステータスを「販売中」に戻す
-        $this->updateLotStatusOnUnsold($property);
+        // 分譲地区画・土地の区画のステータスを「販売中」に戻す（建売の削除と同じ処理。HsProperty::releaseLots()）
+        $property->releaseLots();
 
         return redirect()
             ->route('housing.properties.show', $property)
@@ -235,23 +235,6 @@ class ContractController extends Controller
             $lot = $property->projectLot;
             if ($lot) {
                 $lot->update(['status' => LotStatus::Sold->value]);
-                $lot->project?->syncStatusFromLots();
-            }
-        }
-    }
-
-    /**
-     * 契約削除時: 分譲地区画・土地の区画を「販売中」に戻す
-     */
-    private function updateLotStatusOnUnsold(HsProperty $property): void
-    {
-        // 土地の仕入れ案件の区画: その建売の区画だけを販売中にし、仕入れ案件のステータスを区画から集約する（区画の無い建売は何もしない）
-        ReProcurementLot::markOnSale($property->re_procurement_lot_id ? (int) $property->re_procurement_lot_id : null);
-
-        if ($property->re_project_lot_id) {
-            $lot = $property->projectLot;
-            if ($lot) {
-                $lot->update(['status' => LotStatus::OnSale->value]);
                 $lot->project?->syncStatusFromLots();
             }
         }
