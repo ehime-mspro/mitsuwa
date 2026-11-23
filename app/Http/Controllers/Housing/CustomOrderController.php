@@ -20,6 +20,7 @@ use App\Support\JapanTime;
 use App\Support\ProcurementLotClaims;
 use App\Support\Settings;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -224,23 +225,30 @@ class CustomOrderController extends Controller
     {
         $code = $customOrder->order_code;
 
-        // ファイルの物理削除
-        foreach ($customOrder->files as $file) {
-            Storage::disk('public')->delete($file->file_path);
+        // 消すファイルの保存先は先に集める（行は下の削除の連鎖で消える）
+        $paths = $customOrder->files->pluck('file_path')->all();
+
+        // 区画を戻すこと・工程と注文住宅の削除は 1 つのトランザクション（途中で落ちたら区画も工程も元のまま。
+        // 落ちたのに区画だけ販売中になると、ほかの契約が同じ区画を取れてしまう。docs/RULES.md Bug #147 の追記）
+        DB::transaction(function () use ($customOrder) {
+            // 区画ステータスを戻す
+            $this->releaseLot($customOrder);
+
+            // 工程は親に完全従属するので一緒に消す（設計書 §3.5）。
+            // ⚠ DeletionBlockers には足さない（足すと工程を書いた案件が二度と消せなくなる）。
+            // ⚠ morphMany 経由で消すこと。schedulable_id だけで消すと、別テーブルの
+            //   同じ id の工程まで巻き添えになる。
+            // ⚠ 削除ブロックの判定より**後**に置くこと（ブロックされたのに工程だけ消える事故を防ぐ）。
+            $customOrder->scheduleSteps()->delete();
+
+            // ファイルはcascadeOnDeleteで自動削除
+            $customOrder->delete();
+        });
+
+        // ファイルの中身は確定したあとで消す（先に消すと、削除が落ちたとき行だけ残って中身の無いファイルになる）
+        foreach ($paths as $path) {
+            Storage::disk('public')->delete($path);
         }
-
-        // 区画ステータスを戻す
-        $this->releaseLot($customOrder);
-
-        // 工程は親に完全従属するので一緒に消す（設計書 §3.5）。
-        // ⚠ DeletionBlockers には足さない（足すと工程を書いた案件が二度と消せなくなる）。
-        // ⚠ morphMany 経由で消すこと。schedulable_id だけで消すと、別テーブルの
-        //   同じ id の工程まで巻き添えになる。
-        // ⚠ 削除ブロックの判定より**後**に置くこと（ブロックされたのに工程だけ消える事故を防ぐ）。
-        $customOrder->scheduleSteps()->delete();
-
-        // ファイルはcascadeOnDeleteで自動削除
-        $customOrder->delete();
 
         return redirect()->route('housing.custom-orders.index')
             ->with('success', "注文住宅案件「{$code}」を削除しました。");
