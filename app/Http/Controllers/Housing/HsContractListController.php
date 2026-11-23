@@ -373,6 +373,10 @@ class HsContractListController extends Controller
         // ⚠ 固定のときは種別を必須にしない — 種別が空の契約済みの注文住宅も、画面のまま保存できるように（固定の判定が「今と同じ」を見る）。
         // ⚠ after のフックで見る（ほかの誤りと一度に出す。Bug #112）。
         $landLocked = $hsCustomOrder->isLandLockedByContract();
+        // 区画を足してつないだ前に開いた画面から区画が空で届いたら、紐づいた区画を残す（B3。固定のときだけ）
+        if ($landLocked && ($kept = $hsCustomOrder->lotKeptFor($request->all())) !== null) {
+            $request->merge(['re_procurement_lot_id' => $kept]);
+        }
         // 土地の区画（設計書 §5.3）。土地元が仕入れ案件のときだけ見る。⚠ 入力チェックの前に読むので数字のときだけ使う（Bug #121）
         $isProcurement = $request->input('land_source_type') === HousingLandSourceType::Procurement->value;
         $chosen = $request->input('re_procurement_id');

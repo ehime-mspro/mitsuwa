@@ -211,6 +211,11 @@ class PropertyController extends Controller
      */
     public function update(Request $request, HsProperty $property)
     {
+        // 建売の編集は土地を変えられない画面。区画を足してつないだ前に開いた画面から区画が空で届いたら、紐づいた区画を残す（B3）
+        if (($kept = $property->lotKeptFor($request->all())) !== null) {
+            $request->merge(['re_procurement_lot_id' => $kept]);
+        }
+
         $validated = $this->validateProperty($request, $property);
         $validated['updated_by'] = auth()->id();
 

@@ -189,6 +189,12 @@ class CustomOrderController extends Controller
     {
         $oldStatus = $customOrder->status;
 
+        // 契約済みの注文住宅の土地は変えられない（読み取り専用）。区画を足してつないだ前に開いた画面から
+        // 区画が空で届いたら、紐づいた区画を残す（B3。見積り以前は区画を選べる画面なので補わない）
+        if ($customOrder->isLandLockedByContract() && ($kept = $customOrder->lotKeptFor($request->all())) !== null) {
+            $request->merge(['re_procurement_lot_id' => $kept]);
+        }
+
         $validated = $this->validateOrder($request, current: $customOrder);
         // 登録と同じく買主を必須にし、customer_name を買主名で上書き（判断待ち ⑥。直す前は顧客名だけ変わり買主と食い違った）
         $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));

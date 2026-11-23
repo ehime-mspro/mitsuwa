@@ -40,6 +40,29 @@ trait LocksLandAfterContract
     }
 
     /**
+     * 土地を変えられない画面（読み取り専用）から区画が空で届いたとき、補う保存済みの区画の id（補わないなら null）。
+     * 補うのは、保存済みの種別が仕入れ案件で保存済みの区画があり、送られた種別が仕入れ案件・送られた仕入れ案件が保存済みと同じ・
+     * 送られた区画が空（null か ''）のときだけ。土地を変えられない画面から区画が空で届くのは、区画を足して何かを
+     * つないだ（Bug #146）前に開いた画面だけなので、紐づいた区画を残して保存を通す
+     * （設計書 2026-11-23-lot-link-followups の B3・利用者の決定 案 1）。
+     * ⚠ 呼ぶのは土地を変えられない画面の保存だけ（建売の編集・契約済みの注文住宅の 2 つの編集）。区画を選べる画面に使わない。
+     */
+    public function lotKeptFor(array $input): ?int
+    {
+        $savedLot = self::idText($this->re_procurement_lot_id);
+        if ($this->land_source_type !== HousingLandSourceType::Procurement || $savedLot === null) {
+            return null;
+        }
+
+        $sentLot = $input['re_procurement_lot_id'] ?? null;
+        $kept = ($input['land_source_type'] ?? null) === HousingLandSourceType::Procurement->value
+            && self::idText($input['re_procurement_id'] ?? null) === self::idText($this->re_procurement_id)
+            && ($sentLot === null || $sentLot === '');
+
+        return $kept ? (int) $savedLot : null;
+    }
+
+    /**
      * 比べる形: [種別, 種別が分譲地区画のときだけ区画 id, 種別が仕入れ案件のときだけ仕入れ案件 id,
      *           種別が仕入れ案件のときだけ土地の区画 id]（区画だけを変えるのも「紐付けが違う」）
      *
