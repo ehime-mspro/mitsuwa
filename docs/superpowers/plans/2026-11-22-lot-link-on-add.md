@@ -413,4 +413,4 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 利用者の承認を段ごとにとって流した。13.x を `790f502f` → `c7c6f8ed` へ早送り（push なし）・main repo で `composer dump-autoload --no-dev --optimize`（7,428 クラス）・`./deploy.sh`（exit 0・14:03 ごろ）。
 反映の前後とも本番を読むだけで確かめた（前: 9 本が `790f502f` と md5 一致・区画を選んでいないものがある土地は #21 だけ／後: 12 本が手元と md5 一致・ビュー 328 本 INVALID 0・`laravel.log` は Nov 18 01:45 のまま・#21 の候補は契約 1 件で成約・#9・#18 は 0 件）。
-ログインした画面は Claude in Chrome の拡張につながらず見ていない（外からはログイン画面 200・#21 は 302）。表は BACKLOG の節の「本番反映」。
+ログインした画面は、反映の直後は Claude in Chrome の拡張につながらず、利用者が Chrome にログインし直したあとで #21 の追加のフォームの案内を確かめた（見るだけ・375px と 1440px で横スクロール 0・コンソールのエラー 0）。表は BACKLOG の節の「本番反映」。push 済み（`790f502f..15843f6a`）。
