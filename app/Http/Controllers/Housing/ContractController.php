@@ -10,6 +10,7 @@ use App\Models\HsContract;
 use App\Models\HsProperty;
 use App\Support\Settings;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ContractController extends Controller
 {
@@ -144,10 +145,14 @@ class ContractController extends Controller
                 ->with('error', '契約が登録されていません。');
         }
 
-        $contract->delete();
+        // 契約の削除と区画を戻すことは 1 つのトランザクション（区画を戻す途中で落ちたら契約も消さない。
+        // 消したままだと区画が「成約」のまま残る。docs/RULES.md Bug #147 の追記）
+        DB::transaction(function () use ($contract, $property) {
+            $contract->delete();
 
-        // 分譲地区画・土地の区画のステータスを「販売中」に戻す（建売の削除と同じ処理。HsProperty::releaseLots()）
-        $property->releaseLots();
+            // 分譲地区画・土地の区画のステータスを「販売中」に戻す（建売の削除と同じ処理。HsProperty::releaseLots()）
+            $property->releaseLots();
+        });
 
         return redirect()
             ->route('housing.properties.show', $property)
