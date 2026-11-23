@@ -367,12 +367,41 @@ class ProcurementLotClaimsTest extends RealEstateScreenTestCase
             $this->described(array_column($candidates, 'owner'))
         );
         $this->assertSame(
-            'contract:' . $contract->id . ',property:' . $property->id . ',order:' . $order->id,
+            'contract:' . $contract->id . '=sold,property:' . $property->id . '=on_sale,order:' . $order->id . '=sold',
             ProcurementLotLinks::fingerprint($candidates)
         );
 
         $this->assertSame([], ProcurementLotLinks::candidates($this->land));
         $this->assertSame('', ProcurementLotLinks::fingerprint([]));
+    }
+
+    /**
+     * つなぐ書き込みは「持ち主の区画がまだ空で、持ち主の土地がその区画の土地」のときだけ書き、書いた行の数を返す
+     * （設計書 2026-11-23-lot-link-followups の B1。ほぼ同時の保存がもう区画につないでいた・ほかの土地へ付け替えていたら 0）。
+     */
+    public function test_link_writes_nothing_when_the_owner_moved_or_is_already_linked(): void
+    {
+        $land = $this->lotlessLand();
+        $lot = $this->procurementLot($land, ['lot_number' => 1]);
+        $taken = $this->procurementLot($land, ['lot_number' => 2]);
+        $elsewhere = $this->procurementLot($this->landProcurement(['procurement_code' => 'RE-PRC-009', 'property_name' => '別の土地']), ['lot_number' => 1]);
+
+        $linked = $this->contractOn($land, $taken, '先につながった土地');
+        $this->assertSame(0, ProcurementLotLinks::link($lot, $linked));
+        $this->assertSame($taken->id, (int) $linked->fresh()->procurement_lot_id);
+
+        $property = $this->propertyOn($land, null, 'HS-101');
+        $this->assertSame(0, ProcurementLotLinks::link($elsewhere, $property));
+        $this->assertNull($property->fresh()->re_procurement_lot_id);
+
+        $moved = $this->orderOn($land, null, 'contracted', 'CO-101', '勝山の注文住宅');
+        $moved->update(['land_source_type' => 'customer_land']);
+        $this->assertSame(0, ProcurementLotLinks::link($lot, $moved));
+        $this->assertNull($moved->fresh()->re_procurement_lot_id);
+
+        $contract = $this->contractOn($land, null);
+        $this->assertSame(1, ProcurementLotLinks::link($lot, $contract));
+        $this->assertSame($lot->id, (int) $contract->fresh()->procurement_lot_id);
     }
 
     /** つなぐときに書くのは区画の列だけ（更新日時・更新者・原価・土地原価・ステータスは変えない。設計書の決まり 6） */

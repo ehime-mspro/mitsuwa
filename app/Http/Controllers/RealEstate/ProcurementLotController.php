@@ -72,8 +72,11 @@ class ProcurementLotController extends Controller
 
         DB::transaction(function () use ($procurement, $validated, $link) {
             $lot = $procurement->lots()->create($validated);
-            if ($link !== null) {
-                ProcurementLotLinks::link($lot, $link['owner']);
+            // ほかの保存が先につないだ・付け替えたら 0 行。投げて区画の作成ごと取り消し、顔ぶれが変わった文で断る
+            // （区画を「成約・紐付けなし」で残さない。設計書 2026-11-23-lot-link-followups の B1）
+            if ($link !== null && ProcurementLotLinks::link($lot, $link['owner']) !== 1) {
+                throw ValidationException::withMessages(['lot_link' => self::LINK_STALE])
+                    ->redirectTo(self::back($procurement)->getTargetUrl());
             }
             $procurement->syncStatusFromLots();
         });
@@ -181,9 +184,11 @@ class ProcurementLotController extends Controller
             'lot_number.unique' => self::DUPLICATE_NUMBER,
             'lot_link.required' => 'この区画に紐づけるものを選んでください。',
         ])->after(function ($validator) use ($request, $links) {
-            // 画面を開いたあとで顔ぶれが変わったら、紐づけるものの誤りをこの 1 件にする（決まり 5）
+            // 画面を開いたあとで顔ぶれが変わったら、紐づけるものの誤りをこの 1 件にする（決まり 5）。
+            // ステータスの誤りも出さない（候補のあった画面にはステータスの欄が無い。設計書 2026-11-23-lot-link-followups の B4）
             if ($links !== null && ProcurementLotLinks::fingerprint($links) !== (string) ($request->input('lot_link_candidates') ?? '')) {
                 $validator->errors()->forget('lot_link');
+                $validator->errors()->forget('status');
                 $validator->errors()->add('lot_link', self::LINK_STALE);
             }
         })->validate();

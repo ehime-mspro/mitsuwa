@@ -10,6 +10,7 @@ use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
 use App\Support\ProcurementLotClaims;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
@@ -108,7 +109,7 @@ class ProcurementLotLinkScreensTest extends RealEstateScreenTestCase
         $form = $this->parseForm($detail, self::CREATE);
         $this->assertArrayNotHasKey('status', $form['fields'], '区画を選んでいないものがあるのにステータスの欄がある');
         $this->assertSame('contract:' . $contract->id, $form['fields']['lot_link'] ?? null);
-        $this->assertSame('contract:' . $contract->id, $form['fields']['lot_link_candidates'] ?? null);
+        $this->assertSame('contract:' . $contract->id . '=sold', $form['fields']['lot_link_candidates'] ?? null);
         $this->assertStringContainsString(e(self::ONE_NOTICE), $detail);
 
         $html = $this->landed($this->submit($form, $url));
@@ -200,7 +201,7 @@ class ProcurementLotLinkScreensTest extends RealEstateScreenTestCase
         $this->assertSame(['on_sale', $first->id], [$first->status->value, $open->fresh()->re_procurement_lot_id]);
         $this->assertSame(['', 'property:' . $sold->id, 'order:' . $contracted->id], array_column($this->linkOptions($html), 0));
         $form = $this->parseForm($html, self::CREATE);
-        $this->assertSame('property:' . $sold->id . ',order:' . $contracted->id, $form['fields']['lot_link_candidates']);
+        $this->assertSame('property:' . $sold->id . '=sold,order:' . $contracted->id . '=sold', $form['fields']['lot_link_candidates']);
 
         // 契約の注文住宅を選ぶ → 区画は成約。残りは 1 件（案内に替わる）
         $html = $this->landed($this->submit($this->fill($form, ['lot_link' => 'order:' . $contracted->id, 'area_sqm' => '100.00']), $url));
@@ -273,6 +274,79 @@ class ProcurementLotLinkScreensTest extends RealEstateScreenTestCase
             $this->assertNull($contract->fresh()->procurement_lot_id);
         }
         $this->assertSame('7', $this->parseForm($html, self::CREATE)['fields']['lot_number'], '打った号地番号が戻った画面に残っていない');
+    }
+
+    /**
+     * B1: 開いたフォームを送るあいだに、ほかの保存が同じ契約をほかの区画につないだ（設計書 2026-11-23-lot-link-followups）。
+     * 足そうとした区画ごと取り消し、顔ぶれが変わった文で断る（区画が「成約・紐付けなし」で残らない）。
+     * ⚠ ほかの保存は、号地の重なりの確かめ（入力チェック＝トランザクションの外）の直後に DB::table で真似る（Bug #102 の形）
+     */
+    public function test_a_link_taken_by_another_save_in_between_is_refused(): void
+    {
+        $land = $this->landProcurement();
+        $contract = $this->lotlessContract($land);
+        $url = $this->detailUrl($land);
+        $form = $this->parseForm($this->htmlOf($url), self::CREATE);
+
+        $otherLotId = null;
+        DB::listen(function ($query) use (&$otherLotId, $land, $contract) {
+            if ($otherLotId !== null || ! str_starts_with($query->sql, 'select')
+                || ! str_contains($query->sql, 're_procurement_lots') || ! str_contains($query->sql, 'lot_number')) {
+                return;
+            }
+            $otherLotId = 0;
+            $otherLotId = DB::table('re_procurement_lots')->insertGetId([
+                'procurement_id' => $land->id, 'lot_number' => 5, 'area_sqm' => 100, 'status' => 'sold',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('re_contracts')->where('id', $contract->id)->update(['procurement_lot_id' => $otherLotId]);
+        });
+
+        $response = $this->submit($form, $url);
+        $response->assertRedirect($url . '#lot');
+        $html = $this->landed($response);
+
+        $this->assertErrorItem($html, self::STALE);
+        $this->assertNotNull($otherLotId, 'ほかの保存を真似られなかった（号地の重なりの確かめの問い合わせが見つからない）');
+        $this->assertSame([5], ReProcurementLot::pluck('lot_number')->all(), '足そうとした区画が作られた');
+        $this->assertSame($otherLotId, (int) $contract->fresh()->procurement_lot_id);
+    }
+
+    /** B2: 開いたあとで、契約の無い建売に契約が付いた（画面は「区画は販売中」と出していた）→ 顔ぶれが変わった文で断る */
+    public function test_a_contract_added_to_a_building_after_opening_is_refused(): void
+    {
+        $land = $this->landProcurement();
+        $property = $this->building($land, 'HS-001', false);
+        $url = $this->detailUrl($land);
+        $detail = $this->htmlOf($url);
+        $this->assertStringContainsString(e('この区画は建売物件「HS-001 勝山の建売」に紐づけます（区画のステータスは「販売中」になります）。'), $detail);
+        $form = $this->parseForm($detail, self::CREATE);
+
+        HsContract::create([
+            'property_id' => $property->id, 'customer_name' => '高橋', 'selling_price_land' => 1,
+            'selling_price_building' => 1, 'contract_date' => '2026-11-01', 'created_by' => $this->user->id,
+        ]);
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, self::STALE);
+        $this->assertSame(0, ReProcurementLot::count());
+        $this->assertNull($property->fresh()->re_procurement_lot_id);
+    }
+
+    /** B4: 開いたあとで候補が 0 件になった（開いた画面にステータスの欄は無かった）→ ステータスの誤りは出さない */
+    public function test_a_form_opened_with_owners_does_not_ask_for_the_status(): void
+    {
+        $land = $this->landProcurement();
+        $contract = $this->lotlessContract($land);
+        $url = $this->detailUrl($land);
+        $form = $this->parseForm($this->htmlOf($url), self::CREATE);
+
+        $contract->delete();
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, self::STALE);
+        $this->assertStringNotContainsString(e(trans('validation.required', ['attribute' => 'ステータス'])), $html);
+        $this->assertSame(0, ReProcurementLot::count());
     }
 
     public static function handMadeLinks(): array

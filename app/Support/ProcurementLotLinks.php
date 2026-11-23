@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Enums\HousingLandSourceType;
 use App\Enums\LotStatus;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
@@ -18,8 +19,12 @@ use Illuminate\Database\Eloquent\Collection;
  *   契約の無い建売は販売中）
  * - 決まり 6: つなぐときに書くのは区画の列だけ（土地原価・契約の原価・更新者・更新日時・ステータスは変えない）
  *
- * ⚠ 候補のキーは「種類:id」（contract:12・property:3・order:5）。追加のフォームは開いたときの候補のキーを fingerprint() の形で
- *   hidden に持ち、登録のときに今の候補と比べる（画面を開いたあとで顔ぶれが変わったら断る。決まり 5）。
+ * ⚠ 候補のキーは「種類:id」（contract:12・property:3・order:5）。追加のフォームは開いたときの候補を fingerprint() の形
+ *   （キー=つないだ区画のステータス。例 property:3=on_sale）で hidden に持ち、登録のときに今の候補と比べる
+ *   （画面を開いたあとで顔ぶれが変わったら断る。決まり 5。建売に契約が付いて区画のステータスが変わるのも「変わった」に数える＝
+ *   設計書 2026-11-23-lot-link-followups の B2）。
+ * ⚠ link() は持ち主の区画がまだ空で、持ち主の土地がその区画の土地のときだけ書き、書いた行の数を返す。0 なら、ほかの保存が
+ *   先につないだ・付け替えた（呼ぶ側は区画の作成ごと取り消して断る。同じ設計書の B1）。
  */
 final class ProcurementLotLinks
 {
@@ -38,21 +43,31 @@ final class ProcurementLotLinks
         ], ProcurementLotClaims::unlinkedTakers($procurement));
     }
 
-    /** 候補のキーを並びのまま「,」でつないだ文字（候補が無ければ ''） */
+    /** 候補ごとの「キー=つないだ区画のステータスの値」を並びのまま「,」でつないだ文字（候補が無ければ ''） */
     public static function fingerprint(array $candidates): string
     {
-        return implode(',', array_column($candidates, 'key'));
+        return implode(',', array_map(fn (array $candidate) => $candidate['key'] . '=' . $candidate['status']->value, $candidates));
     }
 
     /**
-     * $owner の区画の列だけを $lot にする（契約は procurement_lot_id、建売・注文住宅は re_procurement_lot_id）。
+     * $owner の区画の列だけを $lot にし、書いた行の数を返す（契約は procurement_lot_id、建売・注文住宅は re_procurement_lot_id）。
+     * 書くのは、持ち主の区画の列がまだ空で、持ち主の土地が $lot の土地のとき（住宅事業は種別が仕入れ案件のとき）だけ。
      * ⚠ モデルを通さない問い合わせで書く（保存のフック・更新日時・更新者を動かさない。決まり 6）
+     * ⚠ 条件を問い合わせの中に置く（MySQL の更新は、ほぼ同時の保存の書き込みを待ってから今の値で数える＝後の保存は 0 行になる）
      */
-    public static function link(ReProcurementLot $lot, ReContract|HsProperty|HsCustomOrder $owner): void
+    public static function link(ReProcurementLot $lot, ReContract|HsProperty|HsCustomOrder $owner): int
     {
-        $column = $owner instanceof ReContract ? 'procurement_lot_id' : 're_procurement_lot_id';
+        $contract = $owner instanceof ReContract;
+        $lotColumn = $contract ? 'procurement_lot_id' : 're_procurement_lot_id';
 
-        $owner->newQuery()->whereKey($owner->getKey())->toBase()->update([$column => $lot->id]);
+        $query = $owner->newQuery()->whereKey($owner->getKey())
+            ->whereNull($lotColumn)
+            ->where($contract ? 'procurement_id' : 're_procurement_id', $lot->procurement_id);
+        if (! $contract) {
+            $query->where('land_source_type', HousingLandSourceType::Procurement->value);
+        }
+
+        return $query->toBase()->update([$lotColumn => $lot->id]);
     }
 
     private static function keyOf(ReContract|HsProperty|HsCustomOrder $owner): string
