@@ -408,3 +408,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
   375px・1440px とも `main` の横スクロール 0・案内と断りの文と選択欄は枠の中・コンソールのエラーは意図した 422 の 1 件だけ
 - 最後の点検（Step 4・2026-11-23・いちばん強いモデル・読み取りだけ・`review-790f502f..ecc7c897.diff`）: 「マージしてよい」・Critical 0・Important 0・Minor 6。古くなったコメント 2 か所は記録のコミットで直した。ほかの Minor は BACKLOG の節の範囲外と利用者に伝えることに書いた
+
+### Task 6 本番反映（2026-11-23）
+
+利用者の承認を段ごとにとって流した。13.x を `790f502f` → `c7c6f8ed` へ早送り（push なし）・main repo で `composer dump-autoload --no-dev --optimize`（7,428 クラス）・`./deploy.sh`（exit 0・14:03 ごろ）。
+反映の前後とも本番を読むだけで確かめた（前: 9 本が `790f502f` と md5 一致・区画を選んでいないものがある土地は #21 だけ／後: 12 本が手元と md5 一致・ビュー 328 本 INVALID 0・`laravel.log` は Nov 18 01:45 のまま・#21 の候補は契約 1 件で成約・#9・#18 は 0 件）。
+ログインした画面は Claude in Chrome の拡張につながらず見ていない（外からはログイン画面 200・#21 は 302）。表は BACKLOG の節の「本番反映」。
