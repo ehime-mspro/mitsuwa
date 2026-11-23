@@ -241,3 +241,14 @@ public function test_a_stale_contract_edit_tells_which_lot_it_now_has(): void
 - [ ] **Step 1:** `docs/RULES.md` に Bug #147（A）を足し、Bug #146 の行に B1〜B4 の追記を足す（記録の直前に最新の 13.x で番号がぶつからないか数える）。`CLAUDE.md` の件数を 147 に。`docs/BACKLOG.md` に節（Bug #146 の節の「範囲外・後回し」から A・B の行を直したと書き換え）
 - [ ] **Step 2: コミット** — `docs: 契約済みの建売の削除で区画を戻す変更と区画を足すときの残りを記録する`
 - [ ] **Step 3:** 本番反映は利用者の承認を段ごとに取る（反映の前の読み取りで、契約済みの建売の削除で成約のまま残った区画を数える＝区画を持たれていない成約の土地の区画・分譲地の区画）
+
+---
+
+## 実測記録（2026-11-23）
+
+- Task 1〜4: 各 Task のテストは直す前に狙った理由で赤を確かめてから直した。Task 1 Housing OK (359) ／ Task 2 RealEstate OK (697) ／ Task 3 Housing OK (374) ／ Task 4 RealEstate OK (698)
+- Task 5 の Ruling: 変異の表を書く途中で、守りの条件 2 つ（`lotKeptFor()` の保存済みの種別・`LOT_HELD` の同じ土地）にテストが無いと分かり、変異の前に 2 本足した（`dd75258f`。変異 H9・R2 で効いていることを確かめた）
+- 全件: OK (5630 tests, 67285 assertions)（守りの 2 本の前）→ 最後の点検の直しのあと **OK (5632 tests, 67316 assertions)**・警告 0。コンパイル済みビュー 327 本 / INVALID 0
+- 変異 24 通り（カナリアを含む。RealEstate・Housing・`OldInputRuleCoverageTest`・`JapaneseValidationMessagesTest` の 1092 本）: 1 回目 22 通りが期待どおり・2 通り（A4・H6）は検出は正しく期待の表が狭かった（A4: 建売の契約の削除も `releaseLots()` を通すので `ProjectSoldStatusTransitionTest` も落ちる ／ H6: 送った区画まで保存済みの区画で上書きするので、区画を付け替える送信の断り 4 本も落ちる）→ 表を直して流し直し、24 通りすべて MATCH（SURVIVED 0）
+- 実ブラウザ（Playwright・使い捨ての SQLite）: A（契約のある建売の削除 → 土地の区画も土地も販売中）・B2（指紋 `property:2=on_sale`）・B3 住宅事業（開いていた建売の編集画面から保存 → 区画が残り土地原価は保存値のまま）・B3 不動産（新しい文 → もう一度押して保存）・375px／1440px の横スクロール 0
+- 最後の点検（fable・読み取りだけ）: 「直してからマージ」。Important 1（Review Focus 4 のテストが保存値と計算値の同じ 30,000,000 どうしで見分けない）→ 保存値を 12,345,678 円にし、いつも計算し直す変異で直す前は緑・直したあとは赤を確かめた（`2227f9b2`）。Minor 6 は BACKLOG の節の後回しに書いた
