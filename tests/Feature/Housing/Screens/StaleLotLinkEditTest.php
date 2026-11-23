@@ -158,6 +158,16 @@ class StaleLotLinkEditTest extends HousingScreenTestCase
         $this->assertSame($kept ? $lot->id : null, $property->fresh()->lotKeptFor($input));
     }
 
+    /** 保存済みの種別が仕入れ案件でない（区画の id が残っているだけ）なら補わない（種別を仕入れ案件へ替える送信に区画を足さない） */
+    public function test_lot_kept_for_is_null_when_the_saved_type_is_not_procurement(): void
+    {
+        $land = $this->landProcurement();
+        $lot = $this->procurementLot($land);
+        $property = $this->property(['land_source_type' => 'customer_land', 're_procurement_id' => $land->id, 're_procurement_lot_id' => $lot->id]);
+
+        $this->assertNull($property->lotKeptFor(['land_source_type' => 'procurement', 're_procurement_id' => (string) $land->id, 're_procurement_lot_id' => null]));
+    }
+
     /** 保存済みの区画が無い（区画の無い土地の建売＝#21 の形）なら、何を送っても補わない */
     public function test_lot_kept_for_is_null_without_a_saved_lot(): void
     {

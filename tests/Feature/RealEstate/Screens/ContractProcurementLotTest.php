@@ -439,6 +439,23 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
         $this->assertSame([$lot->id, '鍵は 2 本'], [(int) $contract->fresh()->procurement_lot_id, $contract->fresh()->memo]);
     }
 
+    /** B3: ほかの土地へ替えて区画を選ばずに送ったときは、今の区画を知らせず「区画を選んでください。」だけ（同じ土地のときだけ号地を出す） */
+    public function test_switching_to_another_land_without_a_lot_asks_plainly(): void
+    {
+        [$land, $first] = $this->twoLotLand();
+        [$other] = $this->twoLotLand(['procurement_code' => 'RE-PRC-002', 'property_name' => '別の土地']);
+        $contract = $this->contractOn($land, $first);
+        $url = route('realestate.contracts.edit', $contract);
+        $form = $this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm');
+        $form['fields']['procurement_id'] = (string) $other->id;
+        $form['fields']['procurement_lot_id'] = '';
+
+        $html = $this->landed($this->submit($form, $url));
+
+        $this->assertErrorItem($html, '区画を選んでください。');
+        $this->assertSame([$land->id, $first->id], [(int) $contract->fresh()->procurement_id, (int) $contract->fresh()->procurement_lot_id]);
+    }
+
     /** M2・Ruling 15: 同じ食い違ったデータでも、何も変えない保存は断らない（契約には「この保存で区画を取る」瞬間が無い） */
     public function test_an_unchanged_save_passes_even_if_the_lot_is_also_taken_elsewhere(): void
     {
