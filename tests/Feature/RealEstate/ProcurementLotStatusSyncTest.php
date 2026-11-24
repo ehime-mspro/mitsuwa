@@ -3,6 +3,7 @@
 namespace Tests\Feature\RealEstate;
 
 use App\Enums\LotStatus;
+use App\Models\Buyer;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
 use App\Models\ReContract;
@@ -30,6 +31,17 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
             'cost_amount' => 25000000,
             'property_name' => $name,
         ];
+    }
+
+    /**
+     * 住宅事業の買主（建売の契約・注文住宅の保存は、画面の選択肢と同じく住宅事業の買主だけを受け付ける。docs/RULES.md Bug #149）
+     */
+    private function housingBuyer(): Buyer
+    {
+        $buyer = $this->buyer();
+        $buyer->addToDepartment('housing', '2026-07-01');
+
+        return $buyer;
     }
 
     private function lotStatus(ReProcurementLot $lot): LotStatus
@@ -133,7 +145,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         ]);
 
         $this->actingAs($this->user)->post("/housing/properties/{$property->id}/contract", [
-            'customer_id' => $this->buyer()->id,
+            'customer_id' => $this->housingBuyer()->id,
             'customer_name' => '上書きされる名前',
             'selling_price_land' => 12800000,
             'selling_price_building' => 28500000,
@@ -152,7 +164,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
             'order_code' => 'CO-' . (HsCustomOrder::count() + 1),
             'order_name' => '山田邸 新築工事',
             'status' => 'consultation',
-            'customer_id' => $this->buyer()->id,
+            'customer_id' => $this->housingBuyer()->id,
             'customer_name' => '山田 太郎',
             'address' => '愛媛県松山市平井町1-2',
             'tax_rate' => 10,
@@ -209,7 +221,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         $this->actingAs($this->user)->post('/housing/custom-orders', [
             'order_name' => '土地の注文住宅',
             'status' => 'contracted',
-            'customer_id' => $this->buyer()->id,
+            'customer_id' => $this->housingBuyer()->id,
             'customer_name' => '上書きされる名前',
             'address' => '松山市石井町1-2-3',
             'is_land_cost_manual' => 0,
@@ -257,7 +269,7 @@ class ProcurementLotStatusSyncTest extends RealEstateScreenTestCase
         ]);
 
         $this->actingAs($this->user)->post("/housing/properties/{$property->id}/contract", [
-            'customer_id' => $this->buyer()->id,
+            'customer_id' => $this->housingBuyer()->id,
             'customer_name' => '上書きされる名前',
             'selling_price_land' => 12800000,
             'selling_price_building' => 28500000,

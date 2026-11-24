@@ -67,6 +67,17 @@ class ProjectSoldStatusTransitionTest extends TestCase
         return Buyer::create(['last_name' => '山田', 'first_name' => '太郎']);
     }
 
+    /**
+     * 住宅事業の買主（建売の契約の保存は、画面の選択肢と同じく住宅事業の買主だけを受け付ける。docs/RULES.md Bug #149）
+     */
+    private function makeHousingBuyer(): Buyer
+    {
+        $buyer = $this->makeBuyer();
+        $buyer->addToDepartment('housing', '2026-07-01');
+
+        return $buyer;
+    }
+
     public function test_schema_is_built_and_models_are_persistable(): void
     {
         $project = $this->makeProject('PJ-001');
@@ -299,7 +310,7 @@ class ProjectSoldStatusTransitionTest extends TestCase
         $project  = $this->makeProject('PJ-001', 'selling');
         $lot      = $this->makeLot($project, 1, 'on_sale');
         $property = $this->makeHousingProperty($lot);
-        $buyer    = $this->makeBuyer();
+        $buyer    = $this->makeHousingBuyer();
 
         $response = $this->actingAs($this->executive())
             ->post("/housing/properties/{$property->id}/contract", [
@@ -323,7 +334,7 @@ class ProjectSoldStatusTransitionTest extends TestCase
         $project   = $this->makeProject('PJ-001', 'selling');
         $lot       = $this->makeLot($project, 1, 'on_sale');
         $property  = $this->makeHousingProperty($lot);
-        $buyer     = $this->makeBuyer();
+        $buyer     = $this->makeHousingBuyer();
         $executive = $this->executive();
 
         $this->actingAs($executive)
