@@ -124,7 +124,9 @@ class ContractController extends Controller
 
         $validated['updated_by'] = auth()->id();
 
-        $contract->update($validated);
+        // 契約の保存と、保存のフック（HsContract::saved）が新しい買主のランクを成約にすることは 1 つのトランザクション
+        // （ランクで落ちたら契約の買主も変えない。前は契約だけが新しい買主で残り、再送してもランクが成約にならなかった。Bug #148 の追記）
+        DB::transaction(fn () => $contract->update($validated));
 
         return redirect()
             ->route('housing.properties.show', $property)

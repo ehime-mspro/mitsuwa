@@ -33,7 +33,8 @@ use Illuminate\Validation\ValidationException;
  *   （設計書 2026-11-22-lot-link-on-add。ProcurementLotLinks）。区画のステータスは、つないだものに合わせてサーバーが決める（決まり 2）。
  * ⚠ 追加のフォームは開いたときの候補を hidden の lot_link_candidates に持つ。今の候補と違えば、何も保存せず入力エラーで断る
  *   （決まり 5。入力エラーにすると打った値が残り、戻った画面には今の候補が出る）。
- * ⚠ 区画の作成・つなぐ書き込み・仕入れ案件のステータスの集約は 1 つのトランザクションで行う。区画の行の編集（更新）は変えない。
+ * ⚠ 区画の作成・つなぐ書き込み・仕入れ案件のステータスの集約は 1 つのトランザクションで行う。区画の行の編集（更新）ではつながない。
+ * ⚠ 区画の更新・削除も、集約と 1 つのトランザクション（途中で落ちたら区画も変えない。docs/RULES.md Bug #148 の追記）。
  */
 class ProcurementLotController extends Controller
 {
@@ -89,8 +90,13 @@ class ProcurementLotController extends Controller
     /** PUT /realestate/procurements/{procurement}/lots/{lot} */
     public function update(Request $request, ReProcurement $procurement, ReProcurementLot $lot): RedirectResponse
     {
-        $lot->update($this->validated($request, $procurement, $lot, null));
-        $procurement->syncStatusFromLots();
+        $validated = $this->validated($request, $procurement, $lot, null);
+
+        // 区画の保存と仕入れ案件のステータスの集約は 1 つのトランザクション（集約の途中で落ちたら区画も変えない。docs/RULES.md Bug #148 の追記）
+        DB::transaction(function () use ($procurement, $lot, $validated) {
+            $lot->update($validated);
+            $procurement->syncStatusFromLots();
+        });
 
         return self::back($procurement)->with('lot_notice', '区画を更新しました。');
     }
@@ -104,8 +110,11 @@ class ProcurementLotController extends Controller
             return self::back($procurement)->with('lot_error', sprintf(self::LINKED, DeletionBlockers::countsLabel($blockers)));
         }
 
-        $lot->delete();
-        $procurement->syncStatusFromLots();
+        // 区画の削除と集約は 1 つのトランザクション（集約の途中で落ちたら区画も消さない。Bug #148 の追記）
+        DB::transaction(function () use ($procurement, $lot) {
+            $lot->delete();
+            $procurement->syncStatusFromLots();
+        });
 
         return self::back($procurement)->with('lot_notice', '区画を削除しました。');
     }

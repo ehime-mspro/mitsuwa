@@ -532,8 +532,13 @@ class ProjectController extends Controller
         $this->assertPerTsuboFits($validated['selling_price_per_tsubo']);
         $validated['is_price_manual'] = true;
 
-        $lot = ReProjectLot::create($validated);
-        $project->syncStatusFromLots();
+        // 区画の保存と分譲地のステータスの集約は 1 つのトランザクション（集約の途中で落ちたら区画も残さない。docs/RULES.md Bug #148 の追記）
+        $lot = DB::transaction(function () use ($project, $validated) {
+            $lot = ReProjectLot::create($validated);
+            $project->syncStatusFromLots();
+
+            return $lot;
+        });
 
         return response()->json([
             'success' => true,
@@ -572,8 +577,11 @@ class ProjectController extends Controller
         $this->assertPerTsuboFits($validated['selling_price_per_tsubo']);
         $validated['is_price_manual'] = true;
 
-        $lot->update($validated);
-        $project->syncStatusFromLots();
+        // 区画の保存と集約は 1 つのトランザクション（Bug #148 の追記）
+        DB::transaction(function () use ($project, $lot, $validated) {
+            $lot->update($validated);
+            $project->syncStatusFromLots();
+        });
 
         return response()->json([
             'success' => true,
@@ -599,8 +607,11 @@ class ProjectController extends Controller
             return response()->json(['message' => DeletionBlockers::summarize($blockers)], 422);
         }
 
-        $lot->delete();
-        $project->syncStatusFromLots();
+        // 区画の削除と集約は 1 つのトランザクション（Bug #148 の追記）
+        DB::transaction(function () use ($project, $lot) {
+            $lot->delete();
+            $project->syncStatusFromLots();
+        });
 
         return response()->json(['success' => true]);
     }
