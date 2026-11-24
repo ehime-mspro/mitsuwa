@@ -8,6 +8,8 @@ use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
 use App\Support\ProcurementLotClaims;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 
 /**
  * 注文住宅（登録・編集・一覧のステータスの小窓・契約一覧から開く契約の編集・詳細）で土地の仕入れ案件の区画を選ぶ（設計書 §5.3〜§5.6）。
@@ -26,6 +28,9 @@ use App\Support\ProcurementLotClaims;
  */
 class ProcurementLotCustomOrderTest extends HousingScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
+
     private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
 
     /** 注文住宅の編集画面の区画なしの案内（「契約」へ進めるときは区画が要る。設計書 2026-11-22-lot-link-on-add の決まり 7） */
@@ -512,6 +517,55 @@ class ProcurementLotCustomOrderTest extends HousingScreenTestCase
         $html = $this->landed($this->submit($this->parseForm($this->htmlOf($show), 'action="' . route('housing.custom-orders.destroy', $order) . '"'), $show));
         $this->assertFlash($html, 'success', '注文住宅案件「CO-001」を削除しました。');
         $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second), '契約以降で削除しても区画が販売中に戻らない');
+    }
+
+    // ============================================================
+    // 保存の途中で落ちたら何も残さない（docs/RULES.md Bug #148）
+    // ⚠ 3 つの入口とも「注文住宅を保存 → 区画を成約（syncLotStatus）」。区画を成約にする SQL を断って、保存したあとで落ちる形を作る。
+    //   分譲地の区画も同じトランザクションの中なので、ここでは土地の区画で見る
+    // ============================================================
+
+    /** 「契約」で登録した注文住宅が、区画を成約にする途中で落ちたら、注文住宅は残らず区画も販売中のまま */
+    public function test_a_contracted_order_that_fails_when_marking_the_lot_leaves_no_order(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $url = $this->createUrl();
+        $buyer = $this->buyer('佐藤', '花子');
+        $form = $this->fill($this->createForm($this->htmlOf($url), $land, $buyer, $this->chooseLot($first)), ['order_name' => '佐藤邸 新築工事', 'status' => 'contracted']);
+        $this->failQuery('/^update "re_procurement_lots" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame(0, HsCustomOrder::count(), '区画を成約にする途中で落ちたのに注文住宅が残った');
+        $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
+    }
+
+    /** 編集画面で「契約」へ進める保存が、区画を成約にする途中で落ちたら、注文住宅は見積りのまま */
+    public function test_an_edit_to_contracted_that_fails_when_marking_the_lot_keeps_the_estimate(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $order = $this->orderOn($land, $first, ['status' => 'estimation']);
+        $url = route('housing.custom-orders.edit', $order);
+        $form = $this->fill($this->customOrderEditForm($order), ['status' => 'contracted']);
+        $this->failQuery('/^update "re_procurement_lots" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame('estimation', $order->fresh()->status->value, '区画を成約にする途中で落ちたのに注文住宅が「契約」になった');
+        $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
+    }
+
+    /** 一覧の小窓で「契約」へ進めるのが、区画を成約にする途中で落ちたら、注文住宅は見積りのまま */
+    public function test_the_popup_change_to_contracted_that_fails_when_marking_the_lot_keeps_the_estimate(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $order = $this->orderOn($land, $first, ['status' => 'estimation']);
+        $this->failQuery('/^update "re_procurement_lots" /i');
+
+        $this->assertSaveFails(fn () => $this->changeStatusFromList($order, 'contracted', '契約'));
+
+        $this->assertSame('estimation', $order->fresh()->status->value, '区画を成約にする途中で落ちたのに注文住宅が「契約」になった');
+        $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
     }
 
     // ============================================================

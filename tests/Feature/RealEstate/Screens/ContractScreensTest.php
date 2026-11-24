@@ -6,6 +6,8 @@ use App\Models\ReContract;
 use App\Models\ReProject;
 use App\Models\ReProjectLot;
 use Illuminate\Support\Facades\Lang;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 
 /**
  * 不動産の契約の登録（分譲地。区画の一覧と原価は画面の JS が API から取る）・編集・仲介の成約／不成約を、
@@ -16,6 +18,9 @@ use Illuminate\Support\Facades\Lang;
  */
 class ContractScreensTest extends RealEstateScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
+
     /** 登録画面で分譲地の契約を選び、分譲地と区画を選ぶ（区画の一覧と原価は JS が API から取る。その応答をそのまま返す） */
     private function subdivisionForm(string $html, ReProject $project, ReProjectLot $lot): array
     {
@@ -222,6 +227,71 @@ class ContractScreensTest extends RealEstateScreenTestCase
         $this->assertFlash($html, 'success', '契約情報を更新しました。');
         $this->assertSame($newLot->id, $contract->fresh()->lot_id);
         $this->assertSame(['on_sale', 'sold'], [$oldLot->fresh()->status->value, $newLot->fresh()->status->value]);
+    }
+
+    // ============================================================
+    // 保存の途中で落ちたら何も残さない（分譲地の区画。docs/RULES.md Bug #148）
+    // ⚠ 失敗は FailsImportWrites::failQuery() で、契約を保存した「あと」・区画を動かした「あと」の SQL を断って起こす
+    // ============================================================
+
+    /** 分譲地の区画で契約した契約（区画は成約） */
+    private function subdivisionContract(ReProject $project, ReProjectLot $lot): ReContract
+    {
+        return ReContract::create([
+            'department' => 'realestate', 'contract_type' => 'subdivision_lot', 'status' => 'contracted', 'contract_date' => '2026-09-01',
+            'property_name' => '平井分譲地', 'project_id' => $project->id, 'lot_id' => $lot->id, 'buyer_id' => $this->buyer()->id,
+            'contract_amount_land' => 12000000, 'cost_amount' => 9000000, 'created_by' => $this->user->id,
+        ]);
+    }
+
+    /** 契約を作ったあと、区画を成約にする SQL で落ちたら、契約は残らず区画も販売中のまま */
+    public function test_a_subdivision_contract_that_fails_when_marking_the_lot_leaves_no_contract(): void
+    {
+        $project = $this->project();
+        $lot = $this->lot($project, 3, 12000000);
+        $this->lot($project, 4, 11000000);
+        $url = route('realestate.contracts.create');
+        $form = $this->fill($this->subdivisionForm($this->htmlOf($url), $project, $lot), ['buyer_id' => (string) $this->buyer()->id, 'contract_date' => '2026-10-01']);
+        $this->failQuery('/^update "re_project_lots" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame(0, ReContract::count(), '区画を成約にする途中で落ちたのに契約が残った');
+        $this->assertSame('on_sale', $lot->fresh()->status->value);
+    }
+
+    /** 区画を付け替える更新は区画を先に動かす。契約の保存で落ちたら、旧の区画は成約・新の区画は販売中のまま */
+    public function test_a_subdivision_lot_change_that_fails_when_saving_the_contract_moves_no_lot(): void
+    {
+        $project = $this->project();
+        $oldLot = $this->lot($project, 3, 12000000, 'sold');
+        $newLot = $this->lot($project, 4, 11000000);
+        $contract = $this->subdivisionContract($project, $oldLot);
+        $url = route('realestate.contracts.edit', $contract);
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('realestate.contracts.update', $contract) . '"', 'contractEditForm', 'data.lotId = "' . $newLot->id . '";');
+        $this->assertSame((string) $newLot->id, $form['fields']['lot_id'], 'テストの前提: 新しい区画を選べていない');
+        $this->failQuery('/^update "re_contracts" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame($oldLot->id, $contract->fresh()->lot_id);
+        $this->assertSame(['sold', 'on_sale'], [$oldLot->fresh()->status->value, $newLot->fresh()->status->value], '契約の保存で落ちたのに区画が動いた');
+    }
+
+    /** 削除は区画を先に販売中に戻す。契約の削除で落ちたら、契約も区画も分譲地のステータスも元のまま */
+    public function test_a_subdivision_contract_delete_that_fails_keeps_the_lot_sold(): void
+    {
+        $project = $this->project(['status' => 'sold_out']);
+        $lot = $this->lot($project, 3, 12000000, 'sold');
+        $contract = $this->subdivisionContract($project, $lot);
+        $show = route('realestate.contracts.show', $contract);
+        $form = $this->parseForm($this->htmlOf($show), 'action="' . route('realestate.contracts.destroy', $contract) . '"');
+        $this->failQuery('/^delete from "re_contracts" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $show));
+
+        $this->assertNotNull(ReContract::find($contract->id));
+        $this->assertSame(['sold', 'sold_out'], [$lot->fresh()->status->value, $project->fresh()->status->value], '契約の削除で落ちたのに区画が販売中になった');
     }
 
     // ============================================================

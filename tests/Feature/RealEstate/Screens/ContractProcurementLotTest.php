@@ -10,6 +10,8 @@ use App\Models\ReProcurement;
 use App\Models\ReProcurementCost;
 use App\Models\ReProcurementLot;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 
 /**
  * 不動産の契約（仕入れ系）で土地の区画を選ぶ（設計書 §5.3〜§5.6）。
@@ -25,6 +27,9 @@ use PHPUnit\Framework\Attributes\DataProvider;
  */
 class ContractProcurementLotTest extends RealEstateScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
+
     private const NOTE = '※ ステータスが「販売中」で、契約の無い案件と、空いている区画のある土地を表示';
 
     private const LEGACY_NOTICE = '区画を選ばずに保存すると、今のまま（区画なし）で保存します。';
@@ -573,6 +578,90 @@ class ContractProcurementLotTest extends RealEstateScreenTestCase
 
         $this->destroyFromScreen($contract);
         $this->assertSame('selling', $land->fresh()->status->value);
+    }
+
+    // ============================================================
+    // 保存の途中で落ちたら何も残さない（土地の区画・区画の無い土地。docs/RULES.md Bug #148）
+    // ⚠ 失敗は FailsImportWrites::failQuery() で、契約を保存した「あと」・区画を動かした「あと」の SQL を断って起こす
+    // ============================================================
+
+    /** 区画 1 つの土地: 契約で区画が成約になり、全区画が成約なので仕入れ案件を集約する。その集約で落ちたら、契約も区画も元のまま */
+    public function test_a_lot_contract_that_fails_when_aggregating_the_land_leaves_nothing(): void
+    {
+        $land = $this->landWithCost();
+        $lot = $this->procurementLot($land, ['selling_price' => 20000000]);
+        $url = $this->createUrl();
+        $form = $this->completed($this->createForm($this->htmlOf($url), $land, $this->chooseLot($lot)));
+        $this->failQuery('/^update "re_procurements" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame(0, ReContract::count(), '仕入れ案件の集約で落ちたのに契約が残った');
+        $this->assertSame(['on_sale', 'selling'], $this->statuses($land, $lot), '仕入れ案件の集約で落ちたのに区画が成約になった');
+    }
+
+    /** 区画の付け替えは「契約を保存 → 旧の区画を販売中 → 新の区画を成約」。新の区画で落ちたら、契約の区画も 2 つの区画も元のまま */
+    public function test_a_lot_change_that_fails_on_the_new_lot_keeps_the_contract_and_both_lots(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $first->update(['status' => LotStatus::Sold->value]);
+        $contract = $this->contractOn($land, $first);
+        $url = route('realestate.contracts.edit', $contract);
+        $form = $this->browserForm($this->htmlOf($url), $this->editNeedle($contract), 'contractEditForm', $this->chooseLot($second));
+        $this->assertSame((string) $second->id, $form['fields']['procurement_lot_id'] ?? null, 'テストの前提: 新しい区画を選べていない');
+        $this->failQuery('/^update "re_procurement_lots" /i', 2);
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame($first->id, $contract->fresh()->procurement_lot_id, '新の区画で落ちたのに契約の区画が替わった');
+        $this->assertSame(['sold', 'on_sale', 'selling'], $this->statuses($land, $first, $second), '新の区画で落ちたのに旧の区画が販売中になった');
+    }
+
+    /** 削除は「契約を消す → 区画を販売中」。区画を戻す途中で落ちたら、契約は残り区画も成約のまま */
+    public function test_a_lot_contract_delete_that_fails_when_releasing_the_lot_keeps_the_contract(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $first->update(['status' => LotStatus::Sold->value]);
+        $contract = $this->contractOn($land, $first);
+        $show = route('realestate.contracts.show', $contract);
+        $form = $this->parseForm($this->htmlOf($show), 'action="' . route('realestate.contracts.destroy', $contract) . '"');
+        $this->failQuery('/^update "re_procurement_lots" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $show));
+
+        $this->assertNotNull(ReContract::find($contract->id), '区画を戻す途中で落ちたのに契約が消えた');
+        $this->assertSame(['sold', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
+    }
+
+    /** 区画の無い土地は契約で仕入れ案件を販売済にする（settleProcurement）。そこで落ちたら、契約は残らず仕入れ案件も販売中のまま */
+    public function test_a_lotless_land_contract_that_fails_when_settling_the_land_leaves_no_contract(): void
+    {
+        $land = $this->landWithCost();
+        $url = $this->createUrl();
+        $form = $this->completed($this->fill($this->createForm($this->htmlOf($url), $land), ['contract_amount_land' => '35000000']));
+        $this->failQuery('/^update "re_procurements" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame(0, ReContract::count(), '仕入れ案件を販売済にする途中で落ちたのに契約が残った');
+        $this->assertSame('selling', $land->fresh()->status->value);
+    }
+
+    /**
+     * 契約の保存のフック（ReContract::saved）が買主の顧客ランクを「成約」にする。そこで落ちたら（Buyer::markContracted() の
+     * 初回作成の競合など）、契約も残らない（再送すれば成功する＝markContracted() の docblock のとおり。前は契約だけが残った）。
+     */
+    public function test_a_contract_that_fails_when_ranking_the_buyer_leaves_no_contract(): void
+    {
+        [$land, $first] = $this->twoLotLand();
+        $url = $this->createUrl();
+        $form = $this->completed($this->createForm($this->htmlOf($url), $land, $this->chooseLot($first)));
+        $this->failQuery('/^(insert into|update) "buyer_departments" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame(0, ReContract::count(), '買主のランクで落ちたのに契約が残った');
+        $this->assertSame('on_sale', $first->fresh()->status->value);
     }
 
     // ============================================================

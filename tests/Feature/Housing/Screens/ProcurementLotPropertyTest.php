@@ -7,6 +7,8 @@ use App\Models\HsProperty;
 use App\Models\ReContract;
 use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 
 /**
  * 建売（登録・編集・建売の契約・詳細）で土地の仕入れ案件の区画を選ぶ（設計書 §5.3〜§5.6）。
@@ -25,6 +27,9 @@ use App\Models\ReProcurementLot;
  */
 class ProcurementLotPropertyTest extends HousingScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
+
     private const NOTE_UNAVAILABLE = '紐付け先から計算できません（分譲地・土地の全区画に販売価格が入っていない／仕入れ案件に原価が無い）。このまま保存すると空になります。';
 
     /** @return array{0: ReProcurement, 1: ReProcurementLot, 2: ReProcurementLot} */
@@ -425,6 +430,26 @@ class ProcurementLotPropertyTest extends HousingScreenTestCase
     private function statuses(ReProcurement $land, ReProcurementLot ...$lots): array
     {
         return [...array_map(fn (ReProcurementLot $lot) => $lot->fresh()->status->value, $lots), $land->fresh()->status->value];
+    }
+
+    /**
+     * 建売の契約の登録は「契約を作る → 区画を成約」。区画を成約にする途中で落ちたら、契約は残らず区画も販売中のまま
+     * （docs/RULES.md Bug #148。前は契約だけが残った）。分譲地の区画も同じトランザクションの中なので、ここでは土地の区画で見る。
+     */
+    public function test_a_building_contract_that_fails_when_marking_the_lot_leaves_no_contract(): void
+    {
+        [$land, $first, $second] = $this->twoLotLand();
+        $property = $this->propertyOn($land, $first);
+        $buyer = $this->buyer(); // 画面を開く前に（買主の選択肢は画面に描かれる）
+        $url = route('housing.contracts.create', $property);
+        $form = $this->browserForm($this->htmlOf($url), 'action="' . route('housing.contracts.store', $property) . '"', 'buyerSelect', $this->chooseBuyer($buyer));
+        $form = $this->fill($form, ['contract_date' => '2026-10-01', 'selling_price_building' => '20000000']);
+        $this->failQuery('/^update "re_procurement_lots" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame(0, HsContract::count(), '区画を成約にする途中で落ちたのに契約が残った');
+        $this->assertSame(['on_sale', 'on_sale', 'selling'], $this->statuses($land, $first, $second));
     }
 
     public function test_a_building_contract_moves_only_its_lot(): void
