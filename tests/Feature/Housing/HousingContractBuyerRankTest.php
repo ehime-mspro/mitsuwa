@@ -187,12 +187,28 @@ class HousingContractBuyerRankTest extends TestCase
         $this->assertSame(BuyerRank::A, $this->rankOf($buyer, 'housing'), '手で戻したランクが成約へ書き戻っている');
     }
 
+    /** 建売の契約をモデルで作る（保存の入口を通らない。HTTP から届かない買主のフックを確かめるため） */
+    private function createTateuriContract(HsProperty $property, Buyer $buyer): HsContract
+    {
+        return HsContract::create([
+            'property_id'            => $property->id,
+            'customer_id'            => $buyer->id,
+            'customer_name'          => $buyer->full_name,
+            'selling_price_land'     => 12800000,
+            'selling_price_building' => 28500000,
+            'tax_rate'               => 10.00,
+            'contract_date'          => '2026-07-19',
+            'created_by'             => $this->executive()->id,
+        ]);
+    }
+
     /**
-     * 追加: 論理削除済みの買主でもランクは更新される（設計書 §4）。
+     * 追加: 論理削除済みの買主でもランクは更新される（設計書 §4）— 建売の契約はモデルで確かめる。
      *
-     * ⚠ この経路は実在する。`customer_id` の `exists:buyers,id` は Laravel の
-     *    DatabasePresenceVerifier がテーブルを直接引くので **SoftDeletingScope を通らない**
-     *    （コントローラ自身も `Buyer::withTrashed()->findOrFail()` で受けている）。
+     * ⚠ 案 A（判断待ち D・docs/RULES.md Bug #149）で、建売の契約の保存（登録・2 つの編集）は削除済みの買主を断る
+     *    （今の買主が削除済みのまま保存するだけなら customer_id が変わらずフックは動かない）＝ HTTP からは届かない
+     *    （断ることは Screens\HousingBuyerChoiceTest）。フックの withTrashed() は、選んだあとで買主が削除された瞬間などの
+     *    守りとして残すので、モデルを直接叩いて固定する（直す前はここが HTTP の登録で通っていた）。
      *
      * ⚠ フックが `Buyer::withTrashed()` でなく素の `Buyer::find()` だと null が返り、
      *    `?->` で**無音で何も起きない**(例外も出ない)。このテストが唯一その退行を捕まえる。
@@ -205,31 +221,26 @@ class HousingContractBuyerRankTest extends TestCase
         $buyer->delete();
         $this->assertSoftDeleted('buyers', ['id' => $buyer->id]);
 
-        $response = $this->actingAs($this->executive())
-            ->post('/housing/properties/' . $property->id . '/contract', $this->tateuriStorePayload($buyer));
+        $this->createTateuriContract($property, $buyer);
 
-        $response->assertSessionHasNoErrors();
-        $response->assertRedirect();
         $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
     }
 
     /**
-     * 追加: 建売で housing の部署行が無い買主は、取得日＝契約日で自動作成される（設計書 §7.1 #11）。
+     * 追加: 建売で housing の部署行が無い買主は、取得日＝契約日で自動作成される（設計書 §7.1 #11）— モデルで確かめる。
      *
-     * ⚠ 不動産側（ReContractBuyerRankTest）にしか無かった検証。規則自体は
-     *    BuyerMarkContractedTest が固定しているが、**この入口が contract_date を
-     *    正しく渡しているか**は入口ごとに測らないと分からない（Bug #44）。
+     * ⚠ 案 A（判断待ち D・Bug #149）で、建売の契約の保存は住宅事業にいない買主を断る（今の買主のまま保存するだけなら
+     *    フックは動かない）＝ HTTP からは届かない。フックが契約日を取得日に渡すことは、ここでモデルを直接叩いて固定する。
+     *    HTTP で届く経路（注文住宅の今の買主のまま「契約」へ進める）は test_custom_order_buyer_without_housing_row_… が見る。
      *    もう一方の部署（不動産）が変わらないことも同時に見る（#14 の逆方向）。
      */
     public function test_tateuri_buyer_without_housing_row_gets_one_with_contract_date(): void
     {
-        // 不動産事業にだけ登録された顧客を建売契約の買主に選ぶ
+        // 不動産事業にだけ登録された顧客が建売の契約の買主になった（前からのデータ）
         $buyer    = $this->makeBuyer('不動産のみ', ['realestate' => ['rank' => BuyerRank::C->value]]);
         $property = $this->makeProperty();
 
-        $this->actingAs($this->executive())
-            ->post('/housing/properties/' . $property->id . '/contract', $this->tateuriStorePayload($buyer))
-            ->assertSessionHasNoErrors();
+        $this->createTateuriContract($property, $buyer);
 
         $pivot = $this->pivot($buyer, 'housing');
         $this->assertNotNull($pivot, '住宅事業の部署行が自動作成されていない');
@@ -469,11 +480,32 @@ class HousingContractBuyerRankTest extends TestCase
     }
 
     /**
+     * 見積り以前の注文住宅をモデルで作る（今の買主が住宅事業にいない＝前からのデータ・あとで部署から外された買主）。
+     * ⚠ 案 A（判断待ち D・Bug #149）で、登録の保存は住宅事業にいない買主を断るので、この形は HTTP の登録では作れない。
+     *    契約前なのでフックは動かない（ランクは変わらない）。
+     */
+    private function consultationOrderFor(Buyer $buyer, array $overrides = []): HsCustomOrder
+    {
+        return HsCustomOrder::create(array_merge([
+            'order_code'       => 'CO-RANK-001',
+            'order_name'       => 'ランク検証A邸',
+            'status'           => CustomOrderStatus::Consultation->value,
+            'customer_id'      => $buyer->id,
+            'customer_name'    => $buyer->full_name,
+            'address'          => '松山市石井町1-2-3',
+            'tax_rate'         => 10.00,
+            'contract_date'    => '2026-07-19',
+            'land_source_type' => HousingLandSourceType::CustomerLand->value,
+            'created_by'       => $this->executive()->id,
+        ], $overrides));
+    }
+
+    /**
      * 追加: 論理削除済みの買主でもランクは更新される（設計書 §4）。
      *
-     * ⚠ この経路は実在する。`customer_id` の `exists:buyers,id` は Laravel の
-     *    DatabasePresenceVerifier がテーブルを直接引くので **SoftDeletingScope を通らない**
-     *    （コントローラ自身も `Buyer::withTrashed()->findOrFail()` で受けている）。
+     * ⚠ この経路は実在する。案 A（判断待ち D・Bug #149）で登録は削除済みの買主を断るが、今の買主があとで削除された
+     *    注文住宅は、ステータスを「契約」へ進めると（一覧の小窓は customer_id を見ない・編集画面も今の買主は選択肢に残す）
+     *    削除済みの買主のままフックが動く（直す前はここを HTTP の登録で見ていた）。
      *
      * ⚠ フックが `Buyer::withTrashed()` でなく素の `Buyer::find()` だと null が返り、
      *    `?->` で**無音で何も起きない**（例外も出ない）。このテストが唯一その退行を捕まえる。
@@ -481,30 +513,45 @@ class HousingContractBuyerRankTest extends TestCase
     public function test_custom_order_soft_deleted_buyer_is_still_marked_contracted(): void
     {
         $buyer = $this->makeBuyer('注文削除済', ['housing' => ['rank' => BuyerRank::C->value]]);
+        $user  = $this->executive();
+
+        $this->actingAs($user)
+            ->post('/housing/custom-orders', $this->customOrderStorePayload($buyer, CustomOrderStatus::Consultation))
+            ->assertSessionHasNoErrors();
+        $order = HsCustomOrder::firstOrFail();
 
         $buyer->delete();
         $this->assertSoftDeleted('buyers', ['id' => $buyer->id]);
+        $this->assertSame(BuyerRank::C, $this->rankOf($buyer, 'housing'), '前提: 見積り以前なのでまだ C');
 
-        $response = $this->actingAs($this->executive())->post(
-            '/housing/custom-orders',
-            $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted),
+        $response = $this->actingAs($user)->patch(
+            '/housing/custom-orders/' . $order->id . '/status',
+            ['status' => CustomOrderStatus::Contracted->value],
         );
 
-        $response->assertSessionHasNoErrors();
-        $response->assertRedirect();
+        $response->assertOk();
+        $response->assertJson(['success' => true]);
         $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'housing'));
     }
 
-    /** 追加: 注文住宅でも housing の部署行が無い買主は取得日＝契約日で自動作成される（設計書 §7.1 #11）。 */
+    /**
+     * 追加: 注文住宅でも housing の部署行が無い買主は取得日＝契約日で自動作成される（設計書 §7.1 #11）。
+     *
+     * ⚠ 案 A（判断待ち D・Bug #149）で登録は住宅事業にいない買主を断る。届くのは、今の買主が住宅事業にいない注文住宅を
+     *    編集画面から「契約」へ進めるとき（今の買主は選択肢に残す）。直す前はここを HTTP の登録で見ていた。
+     */
     public function test_custom_order_buyer_without_housing_row_gets_one_with_contract_date(): void
     {
         $buyer = $this->makeBuyer('注文不動産のみ', ['realestate' => ['rank' => BuyerRank::C->value]]);
+        $order = $this->consultationOrderFor($buyer);
+        $this->assertNull($this->pivot($buyer, 'housing'), '前提: 見積り以前なので住宅事業の行はまだ無い');
 
-        $this->actingAs($this->executive())->post(
-            '/housing/custom-orders',
+        $this->actingAs($this->executive())->put(
+            '/housing/custom-orders/' . $order->id,
             $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted),
         )->assertSessionHasNoErrors();
 
+        $this->assertSame(CustomOrderStatus::Contracted, $order->fresh()->status, 'ステータスが進んでいない（保存自体が失敗）');
         $pivot = $this->pivot($buyer, 'housing');
         $this->assertNotNull($pivot, '住宅事業の部署行が自動作成されていない');
         $this->assertSame(BuyerRank::Contracted, $pivot->rank);
@@ -522,20 +569,24 @@ class HousingContractBuyerRankTest extends TestCase
      *
      * ⚠ 凍結日は「実際の今日」と違う日にすること。今日と同じ日付だと
      *    フォールバックが壊れていても緑になり、テストが何も証明しない。
+     *
+     * ⚠ 案 A（判断待ち D・Bug #149）で登録は住宅事業にいない買主を断るので、今の買主が住宅事業にいない契約日の無い
+     *    注文住宅を、一覧の小窓で「契約」へ進める形で見る（直す前は HTTP の登録で見ていた）。
      */
     public function test_custom_order_without_contract_date_uses_today_as_acquired_date(): void
     {
         $this->travelTo(Carbon::parse('2030-03-15'));
 
-        $buyer   = $this->makeBuyer('契約日なし', ['realestate' => ['rank' => BuyerRank::C->value]]);
-        $payload = $this->customOrderStorePayload($buyer, CustomOrderStatus::Contracted);
-        unset($payload['contract_date']);
+        $buyer = $this->makeBuyer('契約日なし', ['realestate' => ['rank' => BuyerRank::C->value]]);
+        $order = $this->consultationOrderFor($buyer, ['contract_date' => null]);
 
         $this->actingAs($this->executive())
-            ->post('/housing/custom-orders', $payload)
-            ->assertSessionHasNoErrors();
+            ->patch('/housing/custom-orders/' . $order->id . '/status', ['status' => CustomOrderStatus::Contracted->value])
+            ->assertOk()
+            ->assertJson(['success' => true]);
 
-        $order = HsCustomOrder::firstOrFail();
+        $order = $order->fresh();
+        $this->assertSame(CustomOrderStatus::Contracted, $order->status, 'ステータスが進んでいない（保存自体が失敗）');
         $this->assertNull($order->contract_date, '前提: 契約日が保存されている（テストの意図と違う）');
 
         $pivot = $this->pivot($buyer, 'housing');
