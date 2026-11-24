@@ -192,22 +192,7 @@ class ReContractController extends Controller
         // 残すと区画が販売中のまま＝分譲地の区画はもう 1 件の契約に選べてしまう。docs/RULES.md Bug #148）
         $contract = DB::transaction(function () use ($validated, $contractType) {
             $contract = ReContract::create($validated);
-
-            // 分譲地の場合、区画ステータスを sold に変更し PJ を集約
-            if ($contractType->isSubdivision() && $contract->lot_id) {
-                ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::Sold->value]);
-                ReProject::find($contract->project_id)?->syncStatusFromLots();
-            }
-
-            // 仕入れ案件の場合: 区画を選んだ契約はその区画を成約にして仕入れ案件を区画から集約し、
-            // 区画の無い案件は今どおり販売済にする（設計書 §5.4）
-            if ($contractType->isProcurement() && $contract->procurement_id) {
-                if ($contract->procurement_lot_id) {
-                    ReProcurementLot::markSold((int) $contract->procurement_lot_id);
-                } else {
-                    $this->settleProcurement((int) $contract->procurement_id, true);
-                }
-            }
+            $this->markLotSoldOnStore($contract, $contractType);
 
             return $contract;
         });
@@ -729,6 +714,32 @@ class ReContractController extends Controller
             'price_total' => $procurement->getLotSellingPriceTotal(),
             'amount'      => $procurement->landCostForLot((int) $lot->id),
         ];
+    }
+
+    /**
+     * 登録した契約の区画を成約にし、分譲地・仕入れ案件のステータスを集約する（store() のトランザクションの中から呼ぶ。Bug #148）。
+     *
+     * ⚠ store() のクロージャに直に書かない。ContractModelEventPathTest は、クロージャの中も含めて
+     *   `ReContract::create(` と `->update(` が同じ 1 文にあると、契約をクエリビルダで更新していると読む
+     *   （テストの docblock にある誤検出の向き。2026-11-24 に実際に落ちた）。
+     */
+    private function markLotSoldOnStore(ReContract $contract, ReContractType $contractType): void
+    {
+        // 分譲地の場合、区画ステータスを sold に変更し PJ を集約
+        if ($contractType->isSubdivision() && $contract->lot_id) {
+            ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::Sold->value]);
+            ReProject::find($contract->project_id)?->syncStatusFromLots();
+        }
+
+        // 仕入れ案件の場合: 区画を選んだ契約はその区画を成約にして仕入れ案件を区画から集約し、
+        // 区画の無い案件は今どおり販売済にする（設計書 §5.4）
+        if ($contractType->isProcurement() && $contract->procurement_id) {
+            if ($contract->procurement_lot_id) {
+                ReProcurementLot::markSold((int) $contract->procurement_lot_id);
+            } else {
+                $this->settleProcurement((int) $contract->procurement_id, true);
+            }
+        }
     }
 
     /**
