@@ -107,10 +107,16 @@ class CustomOrderController extends Controller
         $this->clearLandFieldsForCustomerLand($validated);
         $this->applyAutomaticLandCost($validated, $request, null);
 
-        $order = HsCustomOrder::create($validated);
+        // 注文住宅の保存（買主のランクを含む）と区画のステータスの連動は 1 つのトランザクション
+        // （区画を成約にする途中で落ちたら注文住宅も残さない。docs/RULES.md Bug #148）
+        $order = DB::transaction(function () use ($validated) {
+            $order = HsCustomOrder::create($validated);
 
-        // 区画ステータス連動
-        $this->syncLotStatus($order, null);
+            // 区画ステータス連動
+            $this->syncLotStatus($order, null);
+
+            return $order;
+        });
 
         return redirect()
             ->route('housing.custom-orders.show', $order)
@@ -207,10 +213,13 @@ class CustomOrderController extends Controller
         $this->clearLandFieldsForCustomerLand($validated);
         $this->applyAutomaticLandCost($validated, $request, $customOrder);
 
-        $customOrder->update($validated);
+        // 保存（買主のランクを含む）と区画のステータスの連動は 1 つのトランザクション（docs/RULES.md Bug #148）
+        DB::transaction(function () use ($customOrder, $validated, $oldStatus) {
+            $customOrder->update($validated);
 
-        // 区画ステータス連動
-        $this->syncLotStatus($customOrder, $oldStatus);
+            // 区画ステータス連動
+            $this->syncLotStatus($customOrder, $oldStatus);
+        });
 
         return redirect()
             ->route('housing.custom-orders.show', $customOrder)
@@ -288,13 +297,16 @@ class CustomOrderController extends Controller
             }
         }
 
-        $customOrder->update([
-            'status'     => $newStatus->value,
-            'updated_by' => auth()->id(),
-        ]);
+        // ステータスの保存（買主のランクを含む）と区画のステータスの連動は 1 つのトランザクション（docs/RULES.md Bug #148）
+        DB::transaction(function () use ($customOrder, $newStatus, $oldStatus) {
+            $customOrder->update([
+                'status'     => $newStatus->value,
+                'updated_by' => auth()->id(),
+            ]);
 
-        // 区画ステータス連動
-        $this->syncLotStatus($customOrder, $oldStatus);
+            // 区画ステータス連動
+            $this->syncLotStatus($customOrder, $oldStatus);
+        });
 
         return response()->json([
             'success' => true,
