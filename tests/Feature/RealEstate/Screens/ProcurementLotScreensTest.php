@@ -11,6 +11,8 @@ use App\Models\ReProcurement;
 use App\Models\ReProcurementLot;
 use App\Services\RealEstate\ProcurementToProjectConverter;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 use Tests\Concerns\TampersForms;
 
 /**
@@ -23,6 +25,8 @@ use Tests\Concerns\TampersForms;
  */
 class ProcurementLotScreensTest extends RealEstateScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
     use TampersForms;
 
     private const CREATE = 'id="lot-create-form"';
@@ -428,6 +432,41 @@ class ProcurementLotScreensTest extends RealEstateScreenTestCase
         $this->assertSame('on_sale', $form['fields']['status']);
         $html = $this->landed($this->submit($form, $url));
         $this->assertLotNotice($html, 'success', '区画を登録しました。');
+        $this->assertSame('selling', $procurement->fresh()->status->value);
+    }
+
+    /**
+     * 区画の更新・削除と仕入れ案件のステータスの集約は 1 つのトランザクション（docs/RULES.md Bug #148 の追記）。
+     * 集約の途中で落ちたら（DB の接続断など）、区画の保存も取り消す（前は区画だけが変わり、ステータスがずれたまま残った）。
+     * 区画 1 を成約にする・区画 1 を消すと、残りが全部成約になるので集約が仕入れ案件を販売済にしようとする。そこで落とす。
+     */
+    public function test_a_lot_edit_that_fails_when_resyncing_leaves_the_lot_unchanged(): void
+    {
+        $procurement = $this->landProcurement(['status' => 'selling']);
+        $lot1 = $this->procurementLot($procurement, ['lot_number' => 1, 'status' => 'on_sale']);
+        $this->procurementLot($procurement, ['lot_number' => 2, 'status' => 'sold']);
+        $url = $this->detailUrl($procurement);
+        $form = $this->fill($this->parseForm($this->htmlOf($url), $this->editForm($lot1)), ['status' => 'sold']);
+        $this->failQuery('/^update "re_procurements" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertSame('on_sale', $lot1->fresh()->status->value, '集約の途中で落ちたのに区画が変わった');
+        $this->assertSame('selling', $procurement->fresh()->status->value);
+    }
+
+    public function test_a_lot_deletion_that_fails_when_resyncing_leaves_the_lot(): void
+    {
+        $procurement = $this->landProcurement(['status' => 'selling']);
+        $lot1 = $this->procurementLot($procurement, ['lot_number' => 1, 'status' => 'on_sale']);
+        $this->procurementLot($procurement, ['lot_number' => 2, 'status' => 'sold']);
+        $url = $this->detailUrl($procurement);
+        $form = $this->parseForm($this->htmlOf($url), $this->deleteForm($lot1));
+        $this->failQuery('/^update "re_procurements" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, $url));
+
+        $this->assertNotNull(ReProcurementLot::find($lot1->id), '集約の途中で落ちたのに区画が消えた');
         $this->assertSame('selling', $procurement->fresh()->status->value);
     }
 

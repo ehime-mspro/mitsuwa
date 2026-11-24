@@ -54,7 +54,9 @@ trait DrivesAlpineFetch
      *                                            $function の script より先に読む）。コンポーネントが別の script の関数
      *                                            （`costExcelImporterFactory(`）や `window.…` の値を使う画面のため
      * @param  array<string, string>  $elements  画面の JS が `document.querySelector(…)` で読む欄の値（セレクタ => 値。
-     *                                         顧客の登録画面の重複の確認が `input[name="last_name"]` を読む）
+     *                                         顧客の登録画面の重複の確認が `input[name="last_name"]` を読む）。
+     *                                         `document.getElementById(id).value` で読む欄は `#id` のキーで渡す
+     *                                         （分譲地の区画の追加が `#add-lot-number` などを読む）
      * ⚠ $function が null のときは画面の script を読まず、$factory（インラインの x-data の式）でコンポーネントを作る（browserForm() と同じ）。
      * @return array{requests: array<int, array{url: string, method: string, headers: array<string, string>, body: ?string}>, confirms: array<int, string>, alerts: array<int, string>, navigations: array<int, string>, submitted: array<int, array{ref: string, method: string, action: string, fields: array<string, string>}>, evaluated: array<int, mixed>, state: array<string, mixed>}
      */
@@ -640,7 +642,15 @@ trait DrivesAlpineFetch
                 },
                 querySelectorAll() { return []; },
                 // 読み込んだ時点で要素を掴む・クリックを見張る script（顧客の一覧のランクの小窓）を読めるように
-                getElementById(id) { return { id: String(id), style: {}, dataset: {}, textContent: '', classList: { contains() { return false; } } }; },
+                // 欄の値を getElementById で読む画面（分譲地の区画の追加）は、driveAlpine() の $elements の `#id` のキーを value に入れる
+                // （キーが無ければ value を持たない＝今までの呼び出しは変わらない）
+                getElementById(id) {
+                    const element = { id: String(id), style: {}, dataset: {}, textContent: '', classList: { contains() { return false; } } };
+                    if (input.elements && Object.prototype.hasOwnProperty.call(input.elements, '#' + id)) {
+                        element.value = input.elements['#' + id];
+                    }
+                    return element;
+                },
                 addEventListener() {},
                 // 選択肢を作って $refs の選択欄へ appendChild する画面（住宅事業の買主の簡易登録）
                 createElement(tag) { return { tagName: String(tag).toUpperCase(), dataset: {}, value: '', textContent: '' }; },

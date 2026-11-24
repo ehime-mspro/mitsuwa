@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Housing\Screens;
 
+use App\Enums\BuyerRank;
 use App\Models\Buyer;
 use App\Models\BuyerDepartmentPivot;
 use App\Models\HsContract;
 use App\Models\HsCustomOrder;
 use App\Models\HsProperty;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 
 /**
  * 住宅事業の買主は、画面の選択肢と同じ集合（住宅事業の買主＋今の買主）だけを受け付ける（判断待ち D・案 A。docs/RULES.md Bug #149）。
@@ -21,6 +24,9 @@ use App\Models\HsProperty;
  */
 class HousingBuyerChoiceTest extends HousingScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
+
     private const REFUSED_ATTRIBUTE = '顧客';
 
     /** 住宅事業にいない買主（不動産事業だけ）・削除済みの買主（住宅事業の行はある） */
@@ -207,6 +213,26 @@ class HousingBuyerChoiceTest extends HousingScreenTestCase
 
         $this->assertFlash($html, 'success', '契約情報を更新しました。');
         $this->assertSame([$current->id, '外構の件'], [$contract->fresh()->customer_id, $contract->fresh()->notes]);
+    }
+
+    /**
+     * 建売の契約の更新と、保存のフック（HsContract::saved）が新しい買主のランクを「成約」にすることは 1 つのトランザクション
+     * （docs/RULES.md Bug #148 の追記）。ランクで落ちたら（Buyer::markContracted()）、契約の買主も前のまま。
+     * 前は契約だけが新しい買主で残り、再送しても買主が変わらないので、ランクは成約にならないままだった。
+     */
+    public function test_the_building_contract_edit_that_fails_when_ranking_the_new_buyer_keeps_the_old_buyer(): void
+    {
+        $property = $this->property();
+        $current = $this->buyer();
+        $contract = $this->contract($property, $current);
+        $next = $this->buyer('佐藤', '花子'); // 画面を開く前に（買主の選択肢は画面に描かれる）
+        $form = $this->fill($this->contractEditForm($property), ['customer_id' => (string) $next->id]);
+        $this->failQuery('/^(insert into|update) "buyer_departments" /i');
+
+        $this->assertSaveFails(fn () => $this->submit($form, route('housing.contracts.edit', $property)));
+
+        $this->assertSame([$current->id, '山田 太郎'], [$contract->fresh()->customer_id, $contract->fresh()->customer_name], 'ランクで落ちたのに契約の買主が変わった');
+        $this->assertSame(BuyerRank::C, $next->fresh()->getDepartmentPivot('housing')->rank);
     }
 
     // ============================================================

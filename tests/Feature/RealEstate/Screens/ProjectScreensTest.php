@@ -6,7 +6,10 @@ use App\Enums\UserRole;
 use App\Models\ReProject;
 use App\Models\ReProjectCost;
 use App\Models\ReProjectDrawing;
+use App\Models\ReProjectLot;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\ExpectsSaveFailure;
+use Tests\Concerns\FailsImportWrites;
 use Tests\Concerns\SignsOutElsewhere;
 
 /**
@@ -15,6 +18,8 @@ use Tests\Concerns\SignsOutElsewhere;
  */
 class ProjectScreensTest extends RealEstateScreenTestCase
 {
+    use ExpectsSaveFailure;
+    use FailsImportWrites;
     use SignsOutElsewhere;
 
     private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
@@ -242,5 +247,72 @@ class ProjectScreensTest extends RealEstateScreenTestCase
         Storage::disk('public')->assertMissing('project-drawings/' . $project->id . '/a.pdf');
         $after = $this->driveAlpine($html, 'lotManager', 'lotManager()', $steps, [$this->asFetchResponse($response)], true, ['drawings.length', 'message']);
         $this->assertSame([0, '図面を削除しました。'], $after['evaluated']);
+    }
+
+    // ================================================================
+    // 区画の画面の追加・更新・削除と分譲地のステータスの集約は 1 つのトランザクション（docs/RULES.md Bug #148 の追記）
+    // ================================================================
+
+    /**
+     * 区画の画面の JS（lotManager）が組んだ要求を、集約の途中で落として送る（前は区画だけが変わり、分譲地のステータスがずれたまま残った）。
+     * 区画を保存した「あと」の集約の UPDATE（`update "re_projects"`）を断る。区画の保存そのものを落とすだけでは、トランザクションが無くても何も変わらない。
+     */
+    private function lotScreenRequest(ReProject $project, string $steps, array $elements = []): array
+    {
+        $html = $this->htmlOf(route('realestate.projects.lots', $project));
+        $run = $this->driveAlpine($html, 'lotManager', 'lotManager()', $steps, [], true, [], [], $elements);
+        $this->assertCount(1, $run['requests'], '区画の画面の JS が要求を組んでいない（alert: ' . implode(' / ', $run['alerts']) . '）');
+
+        return $run;
+    }
+
+    /** 区画 2 号地を選ぶ JS */
+    private const LOT_2 = 'data.lots.find(function (l) { return l.lot_number === 2; })';
+
+    public function test_a_lot_added_on_the_lot_screen_that_fails_when_resyncing_leaves_no_lot(): void
+    {
+        $project = $this->project(['status' => 'sold_out']);
+        $this->lot($project, 1, 20000000, 'sold');
+        $run = $this->lotScreenRequest($project, 'data.showAddLot = true; data.addLot();', [
+            '#add-lot-number' => '2', '#add-area-sqm' => '150.00', '#add-selling-price' => '20000000', '#add-status' => 'on_sale', '#add-notes' => '',
+        ]);
+        $this->assertSame(['POST', route('realestate.projects.lots.store', $project)], [$run['requests'][0]['method'], $run['requests'][0]['url']]);
+        $this->failQuery('/^update "re_projects" /i');
+
+        $this->assertSaveFails(fn () => $this->sendCaptured($run['requests'][0]));
+
+        $this->assertSame(1, ReProjectLot::where('project_id', $project->id)->count(), '集約の途中で落ちたのに区画が増えた');
+        $this->assertSame('sold_out', $project->fresh()->status->value);
+    }
+
+    public function test_a_lot_edited_on_the_lot_screen_that_fails_when_resyncing_leaves_the_lot_unchanged(): void
+    {
+        $project = $this->project(['status' => 'selling']);
+        $this->lot($project, 1, 20000000, 'sold');
+        $lot2 = $this->lot($project, 2, 20000000, 'on_sale');
+        $run = $this->lotScreenRequest($project, 'data.showOps = true; data.startEditLot(' . self::LOT_2 . '); data.editLotData.status = "sold"; data.saveLot();');
+        $this->assertSame(['PUT', route('realestate.projects.lots.update', [$project, $lot2])], [$run['requests'][0]['method'], $run['requests'][0]['url']]);
+        $this->failQuery('/^update "re_projects" /i');
+
+        $this->assertSaveFails(fn () => $this->sendCaptured($run['requests'][0]));
+
+        $this->assertSame('on_sale', $lot2->fresh()->status->value, '集約の途中で落ちたのに区画が変わった');
+        $this->assertSame('selling', $project->fresh()->status->value);
+    }
+
+    public function test_a_lot_deleted_on_the_lot_screen_that_fails_when_resyncing_leaves_the_lot(): void
+    {
+        $project = $this->project(['status' => 'selling']);
+        $this->lot($project, 1, 20000000, 'sold');
+        $lot2 = $this->lot($project, 2, 20000000, 'on_sale');
+        $run = $this->lotScreenRequest($project, 'data.showOps = true; data.deleteLot(' . self::LOT_2 . ');');
+        $this->assertSame(['区画 2 号地を削除しますか？'], $run['confirms']);
+        $this->assertSame(['DELETE', route('realestate.projects.lots.destroy', [$project, $lot2])], [$run['requests'][0]['method'], $run['requests'][0]['url']]);
+        $this->failQuery('/^update "re_projects" /i');
+
+        $this->assertSaveFails(fn () => $this->sendCaptured($run['requests'][0]));
+
+        $this->assertNotNull(ReProjectLot::find($lot2->id), '集約の途中で落ちたのに区画が消えた');
+        $this->assertSame('selling', $project->fresh()->status->value);
     }
 }
