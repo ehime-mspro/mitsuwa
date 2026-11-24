@@ -63,10 +63,14 @@ class ContractController extends Controller
         $validated['property_id'] = $property->id;
         $validated['created_by'] = auth()->id();
 
-        $contract = HsContract::create($validated);
+        // 契約の保存（買主のランクを含む）と区画を成約にすることは 1 つのトランザクション（区画を成約にする途中で落ちたら
+        // 契約も残さない。残すと区画が販売中のまま＝分譲地の区画はほかに選べてしまう。docs/RULES.md Bug #148）
+        DB::transaction(function () use ($validated, $property) {
+            HsContract::create($validated);
 
-        // 分譲地区画のステータスを「成約」に自動更新
-        $this->updateLotStatusOnSold($property);
+            // 分譲地区画・土地の区画のステータスを「成約」に自動更新
+            $this->updateLotStatusOnSold($property);
+        });
 
         return redirect()
             ->route('housing.properties.show', $property)
