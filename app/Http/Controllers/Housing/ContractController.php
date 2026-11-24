@@ -35,8 +35,8 @@ class ContractController extends Controller
         // デフォルト消費税率（システム設定から取得、なければ10.00）
         $defaultTaxRate = $this->getDefaultTaxRate();
 
-        // 買主マスタ（住宅事業所属）
-        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
+        // 買主の選択肢（住宅事業の買主。保存の入力チェックも同じ集合＝Buyer::selectableForHousing()）
+        $buyers = Buyer::selectableForHousing();
 
         return view('housing.contracts.create', compact('property', 'defaults', 'defaultTaxRate', 'buyers'));
     }
@@ -92,16 +92,9 @@ class ContractController extends Controller
 
         $property->load(['projectLot.project', 'procurement']);
 
-        // 買主マスタ（住宅事業所属。現在紐付け中の buyer が SoftDelete されていても選択可能にする）
-        // ⚠ HsContractListController::editBuilding() と同じ形。CLAUDE.md の
-        //    「edit 画面では現在の buyer を必ず含める」規約（Bug #12）。
-        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
-        if ($contract->customer_id) {
-            $current = Buyer::withTrashed()->find($contract->customer_id);
-            if ($current && !$buyers->contains('id', $current->id)) {
-                $buyers->push($current);
-            }
-        }
+        // 買主の選択肢（住宅事業の買主＋今の買主〈削除済み・住宅事業にいなくても〉。CLAUDE.md の
+        // 「edit 画面では現在の buyer を必ず含める」規約・Bug #12。保存の入力チェックも同じ集合）
+        $buyers = Buyer::selectableForHousing($contract->customer_id);
 
         return view('housing.contracts.edit', compact('property', 'contract', 'buyers'));
     }

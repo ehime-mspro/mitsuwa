@@ -125,6 +125,30 @@ class Buyer extends Model
     }
 
     /**
+     * 住宅事業の契約・注文住宅の画面の買主の選択肢（住宅事業の買主＋今の買主〈削除済み・住宅事業にいなくても残す〉）。
+     * 登録は今の買主が無いので住宅事業の買主だけ。
+     *
+     * 画面（建売の契約の登録・編集・契約一覧から開く建売と注文住宅の契約の編集・注文住宅の登録と編集）と、その保存の入力チェック
+     * （Rule::in）が同じ集合を使う＝手で番号を書き換えた送信で、選択肢に無い買主（ほかの部署・削除済み）を紐付けさせない
+     * （紐付くと契約で住宅事業に足され、住宅事業の画面に名前と連絡先が出る。docs/RULES.md Bug #144・#149）。
+     * 今の買主を残すのは、保存で黙って別の人に変えないため（Bug #58・#113 と同じ形）。
+     *
+     * @return \Illuminate\Support\Collection<int, Buyer>
+     */
+    public static function selectableForHousing(?int $currentBuyerId = null): \Illuminate\Support\Collection
+    {
+        $buyers = static::ofDepartment('housing')->orderBy('last_name_kana')->get();
+        if ($currentBuyerId !== null && ! $buyers->contains('id', $currentBuyerId)) {
+            $current = static::withTrashed()->find($currentBuyerId);
+            if ($current) {
+                $buyers->push($current);
+            }
+        }
+
+        return $buyers->toBase();
+    }
+
+    /**
      * キーワード検索（氏名・フリガナ・電話番号）
      */
     public function scopeKeywordSearch($query, ?string $keyword)

@@ -77,7 +77,7 @@ class CustomOrderController extends Controller
         // 仕入れ案件一覧（決済完了以降。全区画がほかに取られた土地は出さない。Ruling 8）
         $procurementsForJs = HousingProcurementLots::formOptions(null);
         $defaultTaxRate = $this->getDefaultTaxRate();
-        $buyers = $this->selectableBuyers(null);
+        $buyers = Buyer::selectableForHousing();
 
         // 入力エラーで戻った画面は、選んでいた区画の分譲地と区画の一覧をサーバで描く（H2）
         $lotSelection = $this->initialLotSelection(old('re_project_lot_id'));
@@ -183,7 +183,7 @@ class CustomOrderController extends Controller
             old('re_procurement_id', $customOrder->re_procurement_id), old('re_procurement_lot_id', $customOrder->re_procurement_lot_id), $customOrder);
         $computedLandCost = $this->computedLandCost($customOrder, $procurementLotSelection['lotId']);
 
-        $buyers = $this->selectableBuyers($customOrder);
+        $buyers = Buyer::selectableForHousing($customOrder->customer_id);
 
         return view('housing.custom-orders.edit', compact('customOrder', 'projectsForJs', 'procurementsForJs', 'lotSelection', 'procurementLotSelection', 'computedLandCost', 'buyers'));
     }
@@ -410,25 +410,6 @@ class CustomOrderController extends Controller
     // ================================================================
 
     /**
-     * 買主の選択肢（住宅事業の買主。編集は今の買主も、削除済み・住宅事業にいなくても足す＝保存で黙って別の人に変えない。判断待ち ⑥）。
-     * 画面の選択肢と編集の保存の入力チェックが同じ集合を使う（選択肢に出ていない買主を手で送っても通さない）。
-     *
-     * @return \Illuminate\Support\Collection<int, Buyer>
-     */
-    private function selectableBuyers(?HsCustomOrder $order): \Illuminate\Support\Collection
-    {
-        $buyers = Buyer::ofDepartment('housing')->orderBy('last_name_kana')->get();
-        if ($order?->customer_id) {
-            $current = Buyer::withTrashed()->find($order->customer_id);
-            if ($current && !$buyers->contains('id', $current->id)) {
-                $buyers->push($current);
-            }
-        }
-
-        return $buyers->toBase();
-    }
-
-    /**
      * バリデーション
      *
      * $current は編集する注文住宅（登録は null）。契約済み（保存済みのステータスが「契約」以降）の土地の紐付けは
@@ -464,7 +445,7 @@ class CustomOrderController extends Controller
             // ⚠ 登録は前の設計（買主ランクの自動成約 §7.1 #11）で広く受け付けている（HousingContractBuyerRankTest が固定）。変えるなら別の判断
             'customer_id'               => $current === null
                 ? ['required', 'integer', 'exists:buyers,id']
-                : ['required', 'integer', Rule::in($this->selectableBuyers($current)->pluck('id')->all())],
+                : ['required', 'integer', Rule::in(Buyer::selectableForHousing($current->customer_id)->pluck('id')->all())],
             'order_name'                => 'required|string|max:100',
             'status'                    => "required|in:{$statuses}",
             'customer_name'             => 'required|string|max:100',
