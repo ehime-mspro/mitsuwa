@@ -111,10 +111,9 @@ class HsCustomOrder extends Model
      * ⚠ wasRecentlyCreated / wasChanged のガードを外さないこと。外すと備考を直しただけで
      *    利用者が手で戻したランクが成約へ書き戻る（設計書 §3.3）。
      *
-     * ⚠ 買主は withTrashed() で引く。customer_id の exists:buyers,id は
-     *    DatabasePresenceVerifier がテーブルを直接引くので SoftDeletingScope を通らず、
-     *    論理削除済みの id が届きうる（コントローラ自身も withTrashed() で受けている）。
-     *    素の find() だと null が返り ?-> で無音になる。
+     * ⚠ 買主は withTrashed() で引く。保存の入口は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付けるが
+     *    （Buyer::selectableForHousing()・docs/RULES.md Bug #149）、今の買主があとで削除された注文住宅は、ステータスを
+     *    「契約」へ進めると（一覧の小窓・編集画面）削除済みの買主のままここが動く。素の find() だと null が返り ?-> で無音になる。
      *
      * ⚠ ここで例外が飛ぶと（唯一の現実的な例外源は markContracted() の初回作成の競合。
      *    そちらの docblock に受容の理由がある）、保存の入口（CustomOrderController の登録・更新・

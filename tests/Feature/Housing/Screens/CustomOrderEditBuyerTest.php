@@ -144,7 +144,7 @@ class CustomOrderEditBuyerTest extends HousingScreenTestCase
     /**
      * 編集の保存は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（手で番号を書き換えた送信。セキュリティの点検の指摘）。
      * ⚠ 通すと、ほかの部署の買主の名前が注文住宅に入り、契約済みならその買主が住宅事業に足されて連絡先まで見える。
-     * ⚠ 登録の保存は前の設計（買主ランクの自動成約 §7.1 #11）でわざと広く受け付けている（HousingContractBuyerRankTest）。今回は変えない。
+     * ⚠ 登録の保存と建売の契約の保存も、のちに同じ集合へ絞った（判断待ち D・案 A。Bug #149・HousingBuyerChoiceTest）。
      */
     public static function unofferedBuyers(): array
     {

@@ -53,10 +53,10 @@ class HsContract extends Model
      * ⚠ wasRecentlyCreated / wasChanged のガードを外さないこと。外すと備考を直しただけで
      *    利用者が手で戻したランクが成約へ書き戻る（設計書 §3.3）。
      *
-     * ⚠ 買主は withTrashed() で引く。customer_id の exists:buyers,id は
-     *    DatabasePresenceVerifier がテーブルを直接引くので SoftDeletingScope を通らず、
-     *    論理削除済みの id が届きうる（コントローラ自身も withTrashed() で受けている）。
-     *    素の find() だと null が返り ?-> で無音になる。
+     * ⚠ 買主は withTrashed() で引く。保存の入口は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付けるので
+     *    （Buyer::selectableForHousing()・docs/RULES.md Bug #149）、削除済みの買主が届くのは今の買主のまま保存するとき
+     *    だけで、そのとき customer_id は変わらずここは動かない＝ HTTP からは届かない。それでも選んだあとで買主が削除された
+     *    瞬間などのための守りとして残す（素の find() だと null が返り ?-> で無音になる。モデルのテストが固定）。
      *
      * ⚠ ここで例外が飛ぶと（唯一の現実的な例外源は markContracted() の初回作成の競合。
      *    そちらの docblock に受容の理由がある）、Housing\ContractController::store と
