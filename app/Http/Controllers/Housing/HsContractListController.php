@@ -236,7 +236,9 @@ class HsContractListController extends Controller
 
         $validated = $request->validate([
             'customer_name'          => 'required|string|max:100',
-            'customer_id'            => 'required|integer|exists:buyers,id',
+            // 画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（手で番号を書き換えた送信で、ほかの部署・削除済みの買主を
+            // 紐付けさせない。判断待ち D・案 A。docs/RULES.md Bug #149）
+            'customer_id'            => ['required', 'integer', Rule::in(Buyer::selectableForHousing($hsContract->customer_id)->pluck('id')->all())],
             'created_by'             => 'nullable|integer|exists:users,id',
             'contract_date'          => 'required|date',
             'notes'                  => 'nullable|string|max:5000',

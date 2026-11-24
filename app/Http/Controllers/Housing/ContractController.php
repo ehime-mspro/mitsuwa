@@ -11,6 +11,7 @@ use App\Models\HsProperty;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ContractController extends Controller
 {
@@ -115,7 +116,8 @@ class ContractController extends Controller
         // 買主マスタ紐付けを必須化し、customer_name を買主名で上書きする（store() と同じ。customer_id は validateContract() が見る）。
         // ⚠ ここが無いと customer_name だけが上書きされて customer_id と食い違う。
         //    修正前はこの画面だけフリーテキスト＋テナント事業の API を叩いていた。
-        $validated = $this->validateContract($request);
+        // 今の買主は削除済み・住宅事業にいなくても選べる（画面の選択肢と同じ。Bug #149）
+        $validated = $this->validateContract($request, $contract);
         $buyer = Buyer::withTrashed()->findOrFail($request->integer('customer_id'));
         $validated['customer_id']   = $buyer->id;
         $validated['customer_name'] = $buyer->full_name;
@@ -162,12 +164,15 @@ class ContractController extends Controller
 
     /**
      * バリデーション
+     *
+     * $current は編集する契約（登録は null）。買主は画面の選択肢（登録は住宅事業の買主・編集は＋今の買主）だけを受け付ける
+     * （手で番号を書き換えた送信で、ほかの部署・削除済みの買主を紐付けさせない。判断待ち D・案 A。docs/RULES.md Bug #149）。
      */
-    private function validateContract(Request $request): array
+    private function validateContract(Request $request, ?HsContract $current = null): array
     {
         return $request->validate([
             // 買主（入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121））
-            'customer_id'            => ['required', 'integer', 'exists:buyers,id'],
+            'customer_id'            => ['required', 'integer', Rule::in(Buyer::selectableForHousing($current?->customer_id)->pluck('id')->all())],
             'customer_name'          => 'required|string|max:100',
             // 金額の列は符号付き INT・消費税率は DECIMAL(4,2)（本番の MySQL は範囲外で 500。H4 / Bug #73）
             'selling_price_land'     => 'required|integer|min:0|max:' . self::MAX_INT_COLUMN,

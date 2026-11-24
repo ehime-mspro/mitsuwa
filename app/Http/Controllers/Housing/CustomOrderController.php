@@ -441,11 +441,9 @@ class CustomOrderController extends Controller
 
         return Validator::make($request->all(), [
             // 買主（登録・編集とも必須。判断待ち ⑥）。入力チェックを 1 回にまとめる（2 回に分けると、1 回目で断ったときに 2 回目の欄の配列が控えに残り、戻った画面が 500 になる。Bug #121）
-            // 編集は画面の選択肢（住宅事業の買主＋今の買主）だけを受け付ける（手で番号を書き換えた送信で、ほかの部署の買主を紐付けさせない）。
-            // ⚠ 登録は前の設計（買主ランクの自動成約 §7.1 #11）で広く受け付けている（HousingContractBuyerRankTest が固定）。変えるなら別の判断
-            'customer_id'               => $current === null
-                ? ['required', 'integer', 'exists:buyers,id']
-                : ['required', 'integer', Rule::in(Buyer::selectableForHousing($current->customer_id)->pluck('id')->all())],
+            // 画面の選択肢（登録は住宅事業の買主・編集は＋今の買主）だけを受け付ける（手で番号を書き換えた送信で、ほかの部署・削除済みの
+            // 買主を紐付けさせない。登録は判断待ち D・案 A〈Bug #149〉、編集は判断待ち ⑥〈Bug #144〉）
+            'customer_id'               => ['required', 'integer', Rule::in(Buyer::selectableForHousing($current?->customer_id)->pluck('id')->all())],
             'order_name'                => 'required|string|max:100',
             'status'                    => "required|in:{$statuses}",
             'customer_name'             => 'required|string|max:100',
