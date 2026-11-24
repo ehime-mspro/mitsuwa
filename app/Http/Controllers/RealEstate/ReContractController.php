@@ -20,6 +20,7 @@ use App\Support\ProcurementLotClaims;
 use App\Support\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -187,23 +188,29 @@ class ReContractController extends Controller
             $validated['gross_profit'] = $this->grossProfitFrom($validated);
         }
 
-        $contract = ReContract::create($validated);
+        // 契約の保存（買主のランクを含む）と区画・ステータスの更新は 1 つのトランザクション（途中で落ちたら契約も残さない。
+        // 残すと区画が販売中のまま＝分譲地の区画はもう 1 件の契約に選べてしまう。docs/RULES.md Bug #148）
+        $contract = DB::transaction(function () use ($validated, $contractType) {
+            $contract = ReContract::create($validated);
 
-        // 分譲地の場合、区画ステータスを sold に変更し PJ を集約
-        if ($contractType->isSubdivision() && $contract->lot_id) {
-            ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::Sold->value]);
-            ReProject::find($contract->project_id)?->syncStatusFromLots();
-        }
-
-        // 仕入れ案件の場合: 区画を選んだ契約はその区画を成約にして仕入れ案件を区画から集約し、
-        // 区画の無い案件は今どおり販売済にする（設計書 §5.4）
-        if ($contractType->isProcurement() && $contract->procurement_id) {
-            if ($contract->procurement_lot_id) {
-                ReProcurementLot::markSold((int) $contract->procurement_lot_id);
-            } else {
-                $this->settleProcurement((int) $contract->procurement_id, true);
+            // 分譲地の場合、区画ステータスを sold に変更し PJ を集約
+            if ($contractType->isSubdivision() && $contract->lot_id) {
+                ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::Sold->value]);
+                ReProject::find($contract->project_id)?->syncStatusFromLots();
             }
-        }
+
+            // 仕入れ案件の場合: 区画を選んだ契約はその区画を成約にして仕入れ案件を区画から集約し、
+            // 区画の無い案件は今どおり販売済にする（設計書 §5.4）
+            if ($contractType->isProcurement() && $contract->procurement_id) {
+                if ($contract->procurement_lot_id) {
+                    ReProcurementLot::markSold((int) $contract->procurement_lot_id);
+                } else {
+                    $this->settleProcurement((int) $contract->procurement_id, true);
+                }
+            }
+
+            return $contract;
+        });
 
         if ($contractType->isBrokerage()) {
             return redirect()
@@ -359,50 +366,54 @@ class ReContractController extends Controller
             $validated['gross_profit'] = $this->grossProfitFrom($validated);
         }
 
-        // 分譲地: 区画変更の場合、旧区画を販売中に戻して新区画をsoldに
-        if ($contractType->isSubdivision()) {
-            $oldLotId = $contract->lot_id;
-            $newLotId = $validated['lot_id'] ?? null;
-            if ($oldLotId && $oldLotId != $newLotId) {
-                ReProjectLot::where('id', $oldLotId)->update(['status' => LotStatus::OnSale->value]);
-            }
-            if ($newLotId && $newLotId != $oldLotId) {
-                ReProjectLot::where('id', $newLotId)->update(['status' => LotStatus::Sold->value]);
-            }
-            // 影響を受ける PJ（旧区画・新区画それぞれの所属）を集約
-            $affectedProjectIds = [];
-            if ($oldLotId) { $affectedProjectIds[] = ReProjectLot::find($oldLotId)?->project_id; }
-            if ($newLotId) { $affectedProjectIds[] = ReProjectLot::find($newLotId)?->project_id; }
-            foreach (array_unique(array_filter($affectedProjectIds)) as $pid) {
-                ReProject::find($pid)?->syncStatusFromLots();
-            }
-        }
-
-        // 仕入れ案件: 旧の案件・区画を保存の前に控える（保存したあとは新しい値になる）
-        $oldProcurementId = $contract->procurement_id ? (int) $contract->procurement_id : null;
-        $oldLotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
-
-        $contract->update($validated);
-
-        // 仕入れ案件: 区画を付け替えたら旧の区画を販売中・新の区画を成約にし（仕入れ案件は区画から集約）、
-        // 区画の無い紐付けの案件を替えたら、旧の案件を販売中・新の案件を販売済にする（区画の無い案件は今どおり。設計書 §5.4）
-        if ($contractType->isProcurement()) {
-            $newProcurementId = $contract->procurement_id ? (int) $contract->procurement_id : null;
-            $newLotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
-
-            if ($oldLotId !== $newLotId) {
-                ReProcurementLot::markOnSale($oldLotId);
-                ReProcurementLot::markSold($newLotId);
-            }
-            if ($oldProcurementId !== $newProcurementId) {
-                if ($oldProcurementId !== null && $oldLotId === null) {
-                    $this->settleProcurement($oldProcurementId, false);
+        // 区画の付け替え・契約の保存（買主のランクを含む）・ステータスの集約は 1 つのトランザクション
+        // （分譲地の区画は契約の保存の前に動かすので、契約の保存で落ちたら区画も戻す。docs/RULES.md Bug #148）
+        DB::transaction(function () use ($contract, $contractType, $validated) {
+            // 分譲地: 区画変更の場合、旧区画を販売中に戻して新区画をsoldに
+            if ($contractType->isSubdivision()) {
+                $oldLotId = $contract->lot_id;
+                $newLotId = $validated['lot_id'] ?? null;
+                if ($oldLotId && $oldLotId != $newLotId) {
+                    ReProjectLot::where('id', $oldLotId)->update(['status' => LotStatus::OnSale->value]);
                 }
-                if ($newProcurementId !== null && $newLotId === null) {
-                    $this->settleProcurement($newProcurementId, true);
+                if ($newLotId && $newLotId != $oldLotId) {
+                    ReProjectLot::where('id', $newLotId)->update(['status' => LotStatus::Sold->value]);
+                }
+                // 影響を受ける PJ（旧区画・新区画それぞれの所属）を集約
+                $affectedProjectIds = [];
+                if ($oldLotId) { $affectedProjectIds[] = ReProjectLot::find($oldLotId)?->project_id; }
+                if ($newLotId) { $affectedProjectIds[] = ReProjectLot::find($newLotId)?->project_id; }
+                foreach (array_unique(array_filter($affectedProjectIds)) as $pid) {
+                    ReProject::find($pid)?->syncStatusFromLots();
                 }
             }
-        }
+
+            // 仕入れ案件: 旧の案件・区画を保存の前に控える（保存したあとは新しい値になる）
+            $oldProcurementId = $contract->procurement_id ? (int) $contract->procurement_id : null;
+            $oldLotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
+
+            $contract->update($validated);
+
+            // 仕入れ案件: 区画を付け替えたら旧の区画を販売中・新の区画を成約にし（仕入れ案件は区画から集約）、
+            // 区画の無い紐付けの案件を替えたら、旧の案件を販売中・新の案件を販売済にする（区画の無い案件は今どおり。設計書 §5.4）
+            if ($contractType->isProcurement()) {
+                $newProcurementId = $contract->procurement_id ? (int) $contract->procurement_id : null;
+                $newLotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
+
+                if ($oldLotId !== $newLotId) {
+                    ReProcurementLot::markOnSale($oldLotId);
+                    ReProcurementLot::markSold($newLotId);
+                }
+                if ($oldProcurementId !== $newProcurementId) {
+                    if ($oldProcurementId !== null && $oldLotId === null) {
+                        $this->settleProcurement($oldProcurementId, false);
+                    }
+                    if ($newProcurementId !== null && $newLotId === null) {
+                        $this->settleProcurement($newProcurementId, true);
+                    }
+                }
+            }
+        });
 
         return redirect()
             ->route('realestate.contracts.show', $contract)
@@ -414,28 +425,33 @@ class ReContractController extends Controller
      */
     public function destroy(ReContract $contract)
     {
-        // 分譲地の場合、区画ステータスを販売中に戻し PJ を集約
-        if ($contract->contract_type->isSubdivision() && $contract->lot_id) {
-            ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::OnSale->value]);
-            ReProject::find($contract->project_id)?->syncStatusFromLots();
-        }
-
-        $procurementId = $contract->contract_type->isProcurement() && $contract->procurement_id ? (int) $contract->procurement_id : null;
-        $lotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
-
         $name = $contract->property_name;
-        $contract->delete();
 
-        // 仕入れ案件の場合: 区画の契約はその区画を販売中に戻して仕入れ案件を区画から集約し、
-        // 区画の無い契約は今どおり販売中に戻す（区画のある土地の区画の無い契約＝#21 は、区画を動かさず集約するだけ）。
-        // 区画の無い案件は 1 仕入れ案件 = 1 契約の前提のため、他契約の有無は確認しない
-        if ($procurementId !== null) {
-            if ($lotId !== null) {
-                ReProcurementLot::markOnSale($lotId);
-            } else {
-                $this->settleProcurement($procurementId, false);
+        // 区画を戻すこと・契約の削除・ステータスの集約は 1 つのトランザクション（分譲地の区画は削除の前に戻すので、
+        // 削除で落ちたら区画も成約のまま。消したのに区画が成約のまま、も残さない。docs/RULES.md Bug #148）
+        DB::transaction(function () use ($contract) {
+            // 分譲地の場合、区画ステータスを販売中に戻し PJ を集約
+            if ($contract->contract_type->isSubdivision() && $contract->lot_id) {
+                ReProjectLot::where('id', $contract->lot_id)->update(['status' => LotStatus::OnSale->value]);
+                ReProject::find($contract->project_id)?->syncStatusFromLots();
             }
-        }
+
+            $procurementId = $contract->contract_type->isProcurement() && $contract->procurement_id ? (int) $contract->procurement_id : null;
+            $lotId = $contract->procurement_lot_id ? (int) $contract->procurement_lot_id : null;
+
+            $contract->delete();
+
+            // 仕入れ案件の場合: 区画の契約はその区画を販売中に戻して仕入れ案件を区画から集約し、
+            // 区画の無い契約は今どおり販売中に戻す（区画のある土地の区画の無い契約＝#21 は、区画を動かさず集約するだけ）。
+            // 区画の無い案件は 1 仕入れ案件 = 1 契約の前提のため、他契約の有無は確認しない
+            if ($procurementId !== null) {
+                if ($lotId !== null) {
+                    ReProcurementLot::markOnSale($lotId);
+                } else {
+                    $this->settleProcurement($procurementId, false);
+                }
+            }
+        });
 
         return redirect()->route('realestate.contracts.index')
             ->with('success', "契約「{$name}」を削除しました。");
