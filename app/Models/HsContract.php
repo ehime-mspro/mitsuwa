@@ -58,11 +58,12 @@ class HsContract extends Model
      *    論理削除済みの id が届きうる（コントローラ自身も withTrashed() で受けている）。
      *    素の find() だと null が返り ?-> で無音になる。
      *
-     * ⚠ ここで例外が飛ぶと契約行は既に保存済みなのに後続処理が中断する。
-     *    HsContractListController::updateBuilding は DB::transaction 内なので巻き戻るが、
-     *    Housing\ContractController::store は使っていないので巻き戻らない。**意図的にそのまま**——
-     *    唯一の現実的な例外源は markContracted() の初回作成の競合で、そちらの docblock に
-     *    受容の理由がある。
+     * ⚠ ここで例外が飛ぶと（唯一の現実的な例外源は markContracted() の初回作成の競合。
+     *    そちらの docblock に受容の理由がある）、Housing\ContractController::store と
+     *    HsContractListController::updateBuilding は DB::transaction の中なので、契約の行も
+     *    （store は区画を成約にすることも）一緒に巻き戻る（docs/RULES.md Bug #148）。
+     *    Housing\ContractController::update だけはトランザクションの外（区画を動かさない 1 行の保存）で、
+     *    買主を替えた更新がここで落ちると、契約の行は新しい買主で残り、買主のランクだけが成約にならない。
      *
      * 部署は hs_contracts が住宅事業固有のテーブルなので housing 固定（設計書 §5.3）。
      */

@@ -125,11 +125,10 @@ class ReContract extends Model
          *    ((string) キャストは Bug #22 型の TypeError 予防。department は NOT NULL なので
          *    現状 null は来ないが、tryFrom() は string|int しか受け付けないため残してある)
          *
-         * ⚠ ここで例外が飛ぶと、契約行は既に INSERT 済みなのにコントローラの後続処理
-         *    (区画・仕入れ案件のステータス同期) が中断する。ReContractController::store() は
-         *    DB::transaction を使っていないため巻き戻らない。**意図的にそのままにしている**——
-         *    唯一の現実的な例外源は markContracted() の初回作成の競合で、そちらの docblock に
-         *    受容の理由がある。store() をトランザクションで包むのは既存の本番挙動を変えるので別案件。
+         * ⚠ ここで例外が飛ぶと（唯一の現実的な例外源は markContracted() の初回作成の競合。
+         *    そちらの docblock に受容の理由がある）、ReContractController の登録・更新は
+         *    DB::transaction の中なので、契約の行も区画・仕入れ案件のステータスも一緒に巻き戻る
+         *    （再送すれば成功する。docs/RULES.md Bug #148。前は契約の行だけが残り、区画は動かなかった）。
          */
         static::saved(function (ReContract $contract): void {
             if ($contract->buyer_id === null) {

@@ -116,10 +116,10 @@ class HsCustomOrder extends Model
      *    論理削除済みの id が届きうる（コントローラ自身も withTrashed() で受けている）。
      *    素の find() だと null が返り ?-> で無音になる。
      *
-     * ⚠ ここで例外が飛ぶと案件行は既に保存済みなのに後続処理（区画ステータス連動）が
-     *    中断する。CustomOrderController は DB::transaction を使っていないので巻き戻らない。
-     *    **意図的にそのまま**——唯一の現実的な例外源は markContracted() の初回作成の競合で、
-     *    そちらの docblock に受容の理由がある。
+     * ⚠ ここで例外が飛ぶと（唯一の現実的な例外源は markContracted() の初回作成の競合。
+     *    そちらの docblock に受容の理由がある）、保存の入口（CustomOrderController の登録・更新・
+     *    一覧の小窓、HsContractListController::updateCustomOrder）はどれも DB::transaction の中なので、
+     *    案件の行も区画ステータス連動も一緒に巻き戻る（docs/RULES.md Bug #148。前は案件の行だけが残った）。
      *
      * 部署は hs_custom_orders が住宅事業固有のテーブルなので housing 固定（設計書 §5.3）。
      */
