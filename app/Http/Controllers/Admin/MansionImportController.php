@@ -1019,6 +1019,12 @@ class MansionImportController extends Controller
             }
             $tenant = $tenants->first();
 
+            // 部屋契約の入居者は「入居者」区分の人だけ（画面と同じ。docs/RULES.md Bug #151）
+            if ($tenant->tenant_type === MsTenantType::ParkingOnly) {
+                $errors[] = ['row' => $rowNum, 'message' => "入居者「{$tenantName}」は区分が「" . MsTenantType::ParkingOnly->label() . '」のため、部屋契約の入居者にできません'];
+                continue;
+            }
+
             // 担当者解決（不一致は null + 警告）
             $staffUserId = null;
             if ($row['staff_user_name'] !== '') {

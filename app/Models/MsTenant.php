@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\MsTenantType;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -20,6 +21,25 @@ class MsTenant extends Model
         return [
             'tenant_type' => MsTenantType::class,
         ];
+    }
+
+    /**
+     * 部屋契約の入居者に選べる人（登録・編集画面の選択肢と、保存の入力チェックが同じ集合を使う。docs/RULES.md Bug #151）。
+     *
+     * 区分が「入居者」の人と、今の入居者を名前順。今の入居者は区分があとで「駐車場利用のみ」に変わっていても残す
+     * （今の値のまま保存できるように＝Bug #130 の形を作らない）。新しく選べるのは「入居者」区分の人だけ。
+     */
+    public static function selectableForRoomContract(?int $currentTenantId = null): Collection
+    {
+        return static::query()
+            ->where(function ($query) use ($currentTenantId) {
+                $query->where('tenant_type', MsTenantType::Resident->value);
+                if ($currentTenantId !== null) {
+                    $query->orWhere('id', $currentTenantId);
+                }
+            })
+            ->orderBy('name')
+            ->get();
     }
 
     public function contracts(): HasMany

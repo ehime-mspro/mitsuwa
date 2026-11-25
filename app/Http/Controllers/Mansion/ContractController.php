@@ -34,6 +34,9 @@ class ContractController extends Controller
     /** 登録で選んだ駐車場が、もう空きでないか、部屋と別の物件の駐車場 */
     private const PARKING_TAKEN = '選んだ駐車場は空きではないか、部屋と別の物件の駐車場です。';
 
+    /** 部屋契約の入居者に、区分が「入居者」でない人（駐車場利用のみ）・無い人を送った（手で組んだ送信だけ。docs/RULES.md Bug #151） */
+    private const TENANT_NOT_RESIDENT = '部屋契約の入居者に選べるのは、区分が「入居者」の人だけです。';
+
     /**
      * 契約一覧（物件・ステータス・年度でフィルター）。
      * 年度は 5 月始まりで contract_date ベースで判定。
@@ -86,7 +89,7 @@ class ContractController extends Controller
 
         return view('mansion.contracts.create', [
             'properties' => MsProperty::orderBy('property_code')->get(),
-            'tenants' => MsTenant::where('tenant_type', 'resident')->orderBy('name')->get(),
+            'tenants' => MsTenant::selectableForRoomContract(),
             'staffUsers' => User::assignable()->orderBy('name')->get(),
             'preselectedRoomId' => $request->room_id,
         ]);
@@ -159,7 +162,7 @@ class ContractController extends Controller
 
         return view('mansion.contracts.edit', [
             'contract' => $contract,
-            'tenants' => MsTenant::where('tenant_type', 'resident')->orderBy('name')->get(),
+            'tenants' => MsTenant::selectableForRoomContract($contract->tenant_id),
             'staffUsers' => User::assignableWith($contract->staff_user_id),
         ]);
     }
@@ -174,7 +177,7 @@ class ContractController extends Controller
             return back()->with('error', '解約済みの契約は編集できません');
         }
 
-        $validated = $this->validateInput($request, true);
+        $validated = $this->validateInput($request, true, $contract->tenant_id);
         $validated['updated_by'] = Auth::id();
         $contract->update($validated);
 
@@ -399,9 +402,12 @@ class ContractController extends Controller
     /**
      * 登録・更新共通バリデーション。
      * $skipRoomTenant = true の場合は部屋 ID を必須から外す（更新時の部屋付け替えを許可しない）。
+     * 入居者は画面の選択肢と同じ集合（「入居者」区分の人＋更新なら今の入居者）だけを受け付ける（docs/RULES.md Bug #151。
+     * 手で番号を書き換えた送信で、駐車場利用のみの人を部屋契約の入居者にさせない）。
      */
-    private function validateInput(Request $request, bool $skipRoomTenant = false): array
+    private function validateInput(Request $request, bool $skipRoomTenant = false, ?int $currentTenantId = null): array
     {
+        $tenantRule = ['required', Rule::in(MsTenant::selectableForRoomContract($currentTenantId)->pluck('id')->all())];
         $rules = [
             'contract_date' => 'nullable|date',
             'move_in_date' => 'nullable|date',
@@ -412,19 +418,19 @@ class ContractController extends Controller
             'staff_user_id' => 'nullable|exists:users,id',
             'memo' => 'nullable|string',
         ];
-        $messages = [];
+        $messages = ['tenant_id.in' => self::TENANT_NOT_RESIDENT];
         if (!$skipRoomTenant) {
             // 選べるのは空室・申込み中の部屋と空きの駐車場だけ（登録画面の API と同じ）。部屋と同じ物件かは store() のロックの中で見る
             $rules['room_id'] = ['required', Rule::exists('ms_rooms', 'id')->whereIn('status', [MsRoomStatus::Vacant->value, MsRoomStatus::Negotiating->value])];
-            $rules['tenant_id'] = 'required|exists:ms_tenants,id';
+            $rules['tenant_id'] = $tenantRule;
             $rules['parking_ids'] = 'nullable|array';
             $rules['parking_ids.*'] = ['integer', Rule::exists('ms_parkings', 'id')->where('status', MsParkingStatus::Vacant->value)];
             // 物件は部屋を絞り込むための画面の欄で、保存しない（exclude）。規則を置くのは、断ったときの控えから
             // 配列を外すため（駐車場契約の物件と同じ。Bug #121）
             $rules['property_id'] = 'exclude';
-            $messages = ['room_id.exists' => self::ROOM_TAKEN, 'parking_ids.*.exists' => self::PARKING_TAKEN, 'parking_ids.*.integer' => self::PARKING_TAKEN];
+            $messages += ['room_id.exists' => self::ROOM_TAKEN, 'parking_ids.*.exists' => self::PARKING_TAKEN, 'parking_ids.*.integer' => self::PARKING_TAKEN];
         } else {
-            $rules['tenant_id'] = 'required|exists:ms_tenants,id';
+            $rules['tenant_id'] = $tenantRule;
         }
 
         return $request->validate($rules, $messages);

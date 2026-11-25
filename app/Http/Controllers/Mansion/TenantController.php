@@ -6,6 +6,7 @@ use App\Enums\MsTenantType;
 use App\Http\Controllers\Controller;
 use App\Models\MsTenant;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * 賃貸マンション入居者管理コントローラー。
@@ -15,6 +16,9 @@ use Illuminate\Http\Request;
  */
 class TenantController extends Controller
 {
+    /** 契約中の部屋契約がある入居者を「駐車場利用のみ」に変えようとした（docs/RULES.md Bug #151） */
+    private const TYPE_LOCKED_BY_ROOM_CONTRACT = '契約中の部屋契約がある入居者は、区分を「駐車場利用のみ」に変えられません（部屋契約を解約すると変えられます）。';
+
     /**
      * 入居者一覧（区分・キーワードでフィルター可能）。
      */
@@ -99,7 +103,7 @@ class TenantController extends Controller
      */
     public function update(Request $request, MsTenant $tenant)
     {
-        $tenant->update($this->validateInput($request));
+        $tenant->update($this->validateInput($request, $tenant));
 
         return redirect()->route('mansion.tenants.show', $tenant)
             ->with('success', '入居者を更新しました');
@@ -143,10 +147,14 @@ class TenantController extends Controller
     /**
      * 登録・更新共通バリデーション。
      * tenant_type は必須、氏名は必須、連絡先・緊急連絡先は任意。
+     *
+     * 更新では、契約中の部屋契約がある人を「駐車場利用のみ」に変えない（部屋契約の入居者は「入居者」区分の人だけ。
+     * docs/RULES.md Bug #151）。今すでに「駐車場利用のみ」の人（直す前に作られた形）は、区分を変えない保存を通す
+     * （今の値のまま保存できなくする形＝Bug #130 を作らない）。ほかの誤りと一度に出す（after。Bug #112）。
      */
-    private function validateInput(Request $request): array
+    private function validateInput(Request $request, ?MsTenant $tenant = null): array
     {
-        return $request->validate([
+        return Validator::make($request->all(), [
             'tenant_type' => 'required|in:resident,parking_only',
             'name' => 'required|string|max:100',
             'phone' => 'nullable|string|max:20',
@@ -159,6 +167,13 @@ class TenantController extends Controller
         ], [], [
             // 画面ラベルに合わせる（lang/ja/validation.php の既定は「名称」）
             'name' => '氏名',
-        ]);
+        ])->after(function ($validator) use ($request, $tenant) {
+            if ($tenant !== null
+                && $request->input('tenant_type') === MsTenantType::ParkingOnly->value
+                && $tenant->tenant_type !== MsTenantType::ParkingOnly
+                && $tenant->activeContract()->exists()) {
+                $validator->errors()->add('tenant_type', self::TYPE_LOCKED_BY_ROOM_CONTRACT);
+            }
+        })->validate();
     }
 }

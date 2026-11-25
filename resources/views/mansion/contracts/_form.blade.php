@@ -1,7 +1,7 @@
 {{--
     マンション部屋契約 フォーム共通パーシャル（create / edit 共用）
     - $contract: MsContract モデル（編集時）または null（新規登録時）
-    - $tenants: MsTenant コレクション（resident のみ）
+    - $tenants: MsTenant コレクション（MsTenant::selectableForRoomContract()＝「入居者」区分の人＋編集なら今の入居者。docs/RULES.md Bug #151）
     - $staffUsers: User コレクション
 
     設計方針:
@@ -75,7 +75,7 @@
                 <option value="">選択してください</option>
                 @foreach($tenants as $t)
                     <option value="{{ $t->id }}" {{ (string) $valTenantId === (string) $t->id ? 'selected' : '' }}>
-                        {{ $t->name }}
+                        {{ $t->name }}@if($t->tenant_type === \App\Enums\MsTenantType::ParkingOnly)（{{ $t->tenant_type->label() }}）@endif
                     </option>
                 @endforeach
             </select>
