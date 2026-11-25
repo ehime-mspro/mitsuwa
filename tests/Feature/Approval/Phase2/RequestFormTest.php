@@ -12,6 +12,7 @@ use App\Support\Approval\WorkflowConflict;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Js;
 use Tests\Concerns\BuildsApprovalFixtures;
 use Tests\Concerns\ParsesForms;
@@ -369,6 +370,39 @@ class RequestFormTest extends TestCase
             ->assertSessionHas('error', '削除できるのは、一度も提出していない下書きだけです。');
 
         $this->assertNotNull($request->fresh());
+    }
+
+    /**
+     * 削除できるかを確かめたあと・消す前に、別のタブで提出された下書きは消さない（状態を条件にして消すので 0 行になり、断る）。
+     * 断ったときは赤い帯だけで、緑の帯も添付のフォルダの削除も起きない（Bug #150 で、断るときの転送を作る場所を変えた）。
+     * 消す前の提出は、DELETE を実行する直前に申請の行を提出したあとの形に書き換えて再現する。
+     */
+    public function test_a_draft_submitted_just_before_the_delete_is_kept(): void
+    {
+        Storage::fake('local');
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+        Storage::disk('local')->put("approvals/{$draft->id}/note.txt", 'x');
+
+        $submitted = false;
+        DB::beforeExecuting(function (string $sql) use ($draft, &$submitted): void {
+            if ($submitted || preg_match('/^delete from "approval_requests"/i', $sql) !== 1) {
+                return;
+            }
+            $submitted = true;
+            DB::table('approval_requests')->where('id', $draft->id)
+                ->update(['status' => ApprovalStatus::HeadReview->value, 'round' => 1]);
+        });
+
+        $this->actingAs($w['applicant'])->delete(route('approvals.requests.destroy', $draft))
+            ->assertRedirect(route('approvals.requests.show', $draft))
+            ->assertSessionHas('error', '削除できるのは、一度も提出していない下書きだけです。')
+            ->assertSessionMissing('success');
+
+        $this->assertTrue($submitted, 'DELETE の前に提出を差し込めていない');
+        $this->assertNotNull($draft->fresh());
+        Storage::disk('local')->assertExists("approvals/{$draft->id}/note.txt");
     }
 
     /** コピーして作成: 中身を写す。停止した種類と、今は所属していない部門は空にする（設計書 §5.6） */
