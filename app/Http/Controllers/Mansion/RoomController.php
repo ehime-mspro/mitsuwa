@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * 賃貸マンション部屋管理コントローラー。
  * 一覧・詳細は物件詳細画面に内蔵されているため、本 Controller は create/store/edit/update/destroy のみ。
- * ステータスの Ajax 変更も handle する。
+ * ステータスは編集画面の保存（update）で変える（画面から呼ばれていなかった Ajax のルートは 2026-11-25 に消した）。
  */
 class RoomController extends Controller
 {
@@ -105,22 +105,6 @@ class RoomController extends Controller
         }
 
         return null;
-    }
-
-    /**
-     * Ajax ステータス変更。入居中から直接変更するのは誤操作防止のため禁止（契約解約経由に限定）。
-     */
-    public function updateStatus(Request $request, MsRoom $room)
-    {
-        $request->validate(['status' => 'required|in:vacant,occupied,negotiating,move_out_planned']);
-
-        // 入居中の部屋を直接変更すると契約整合性が崩れるため、契約解約経由に限定
-        if ($room->status === MsRoomStatus::Occupied && $request->status !== 'occupied') {
-            return back()->withErrors(['status' => '入居中の部屋は契約解約以外で変更できません']);
-        }
-
-        $room->update(['status' => $request->status]);
-        return back()->with('success', 'ステータスを更新しました');
     }
 
     /**

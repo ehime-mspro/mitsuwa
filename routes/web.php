@@ -651,11 +651,6 @@ Route::middleware(['auth', 'password.change'])->group(function () {
                 ->name('mansion.rooms.destroy');
         });
 
-        // 部屋ステータス更新（Ajax）— 他モジュールの updateStatus と同様に manager 以上に限定
-        Route::patch('/rooms/{room}/status', [\App\Http\Controllers\Mansion\RoomController::class, 'updateStatus'])
-            ->middleware('role:executive,manager')
-            ->name('mansion.rooms.updateStatus');
-
         /*
         |------------------------------------------------------------------
         | 駐車場管理（Phase D）
