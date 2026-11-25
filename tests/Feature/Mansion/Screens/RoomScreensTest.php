@@ -3,10 +3,11 @@
 namespace Tests\Feature\Mansion\Screens;
 
 use App\Models\MsRoom;
+use Illuminate\Support\Facades\Route;
 
 /**
  * 賃貸マンションの部屋の登録（「内容をコピーして追加」を含む）・編集・削除を、描いた画面から送る往復で見る。
- * 部屋のステータスの Ajax（`mansion.rooms.updateStatus`）は画面から呼ばれていないので、サーバの約束だけを見る。
+ * 部屋のステータスの Ajax のルート（`mansion.rooms.updateStatus`）は画面から呼ばれていなかったので消した（2026-11-25）。
  */
 class RoomScreensTest extends MansionScreenTestCase
 {
@@ -170,28 +171,24 @@ class RoomScreensTest extends MansionScreenTestCase
     }
 
     // ============================================================
-    // ステータスの Ajax（画面から呼ばれていない。サーバの約束だけ）
+    // ステータスの Ajax のルート（画面から呼ばれていなかったので 2026-11-25 に消した）
     // ============================================================
 
-    public function test_the_status_endpoint_changes_a_room_that_is_not_occupied(): void
+    /**
+     * 消したルートは「入居中」からの変更しか断らず、退去予定（契約中）の部屋を空室にできた。
+     * 空室にすると契約の登録画面の空室の一覧に出て、同じ部屋に 2 件目の契約を作れる（Bug #103 と同じ形）。
+     */
+    public function test_the_unused_status_route_is_gone(): void
     {
         $room = $this->room('101');
-        $from = route('mansion.properties.show', $this->building);
+        $this->contract($room, $this->tenant());
+        $room->update(['status' => 'move_out_planned']);
 
-        $this->actingAs($this->user)->from($from)->patch(route('mansion.rooms.updateStatus', $room), ['status' => 'negotiating'])
-            ->assertRedirect($from)->assertSessionHas('success', 'ステータスを更新しました');
+        $response = $this->actingAs($this->user)
+            ->patch('/mansion/rooms/' . $room->id . '/status', ['status' => 'vacant']);
 
-        $this->assertSame('negotiating', $room->fresh()->status->value);
-    }
-
-    public function test_the_status_endpoint_refuses_to_change_an_occupied_room(): void
-    {
-        $room = $this->room('101', 'occupied');
-        $from = route('mansion.properties.show', $this->building);
-
-        $this->actingAs($this->user)->from($from)->patch(route('mansion.rooms.updateStatus', $room), ['status' => 'vacant'])
-            ->assertRedirect($from);
-
-        $this->assertSame('occupied', $room->fresh()->status->value);
+        $this->assertSame('move_out_planned', $room->fresh()->status->value);
+        $response->assertNotFound();
+        $this->assertFalse(Route::has('mansion.rooms.updateStatus'));
     }
 }
