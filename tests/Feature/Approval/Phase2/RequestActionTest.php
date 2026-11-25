@@ -316,6 +316,27 @@ class RequestActionTest extends TestCase
     }
 
     /**
+     * 下書きを削除できたあとの画面には、緑の帯だけが出る（Bug #150。断るときの転送を削除の前に作っていて、
+     * `->with()` は作った時点で文を控えに入れるので、削除できたときにも赤い帯「削除できるのは…」が並んでいた）。
+     * 帯は着いた画面で見る（控えだけを見るテストは、赤い帯が出ていることを見ていなかった）。
+     */
+    public function test_the_page_after_deleting_a_draft_shows_only_the_success_banner(): void
+    {
+        $w = $this->approvalWorld();
+        $this->launchApprovals();
+        $draft = $this->draftFor($w);
+
+        $form = $this->parseForm($this->showHtml($w['applicant'], $draft), 'action="' . route('approvals.requests.destroy', $draft) . '"');
+        $response = $this->actingAs($w['applicant'])->post($form['action'], $form['fields'])
+            ->assertRedirect(route('approvals.home'));
+        $page = $this->followRedirects($response)->assertOk()->getContent();
+
+        $this->assertStringContainsString('下書きを削除しました。', $page);
+        $this->assertStringNotContainsString('削除できるのは、一度も提出していない下書きだけです。', $page);
+        $this->assertNull($draft->fresh());
+    }
+
+    /**
      * 申請者の操作は、その状態で押せるものだけ（提出した申請に削除・編集を、社長の判断のあとに取り下げを、
      * 条件確認待ちのほかに条件の確認を出さない。要件 4.5・4.6・Task 13 の点検の M-4）。
      */
