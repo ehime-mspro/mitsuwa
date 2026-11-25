@@ -397,6 +397,33 @@ class MansionImportTest extends TestCase
     }
 
     /**
+     * 区分が「駐車場利用のみ」の入居者の行は、その行の誤りになる（部屋契約の入居者は「入居者」区分の人だけ。docs/RULES.md Bug #151）。
+     *
+     * ⚠ 役割（rowErrors）と画面の表示を別々に見る（Bug #54 ④）。ほかの行は入る。
+     */
+    public function test_a_parking_only_tenant_row_is_refused_for_a_room_contract(): void
+    {
+        $this->seedRoomAndTenant();
+        $this->confirm('room', self::ROOM_HEADER . "\nミツワレジデンス,102,,,,,,,,,\n");
+        $this->confirm('tenant', self::TENANT_HEADER . "\n駐車場利用のみ,駐車次郎,,,,,,,\n");
+        $message = '入居者「駐車次郎」は区分が「駐車場利用のみ」のため、部屋契約の入居者にできません';
+
+        $csv = self::ROOM_CONTRACT_HEADER . "\n"
+             . "ミツワレジデンス,101,山田太郎,2026-04-01,,,,,,,,\n"
+             . "ミツワレジデンス,102,駐車次郎,2026-04-01,,,,,,,,\n";
+
+        $preview = $this->preview('room-contract', $csv);
+        $this->assertSame([['row' => 3, 'message' => $message]], $preview->viewData('rowErrors'));
+        $preview->assertSee($message, false);
+
+        $this->confirm('room-contract', $csv)
+            ->assertSessionHas('success', '部屋契約インポート完了: 1件を登録しました');
+
+        $this->assertSame(['山田太郎'], \App\Models\MsContract::with('tenant')->get()->pluck('tenant.name')->all());
+        $this->assertSame('vacant', \App\Models\MsRoom::where('room_number', '102')->sole()->status->value);
+    }
+
+    /**
      * 既に契約中の部屋には**警告**が出るが、取り込みは止まらない。
      *
      * ⚠ **`assertSee` では警告とエラー行を区別できない。** 同じ文言が
