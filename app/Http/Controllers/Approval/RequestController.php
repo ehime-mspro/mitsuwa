@@ -203,11 +203,13 @@ class RequestController extends Controller
         $user = $request->user();
         $this->assertVisible($user, $approvalRequest);
 
-        $refusal = redirect()->route('approvals.requests.show', $approvalRequest)
+        // ⚠ 断るときの転送は、断るときにだけ作る（`->with()` は転送を作った時点で文を控えに入れる。
+        //   先に作っておくと、削除できたときにも赤い帯「削除できるのは…」が緑の帯と並んで出た。Bug #150）
+        $refuse = fn (): RedirectResponse => redirect()->route('approvals.requests.show', $approvalRequest)
             ->with('error', '削除できるのは、一度も提出していない下書きだけです。');
 
         if (! RequestPermissions::for($user, $approvalRequest)->canDelete()) {
-            return $refusal;
+            return $refuse();
         }
 
         // ⚠ 状態を条件にして消す（別のタブで提出した直後の申請を消さない。提出した申請には記録があり、
@@ -218,7 +220,7 @@ class RequestController extends Controller
             ->delete();
 
         if ($deleted !== 1) {
-            return $refusal;
+            return $refuse();
         }
 
         // 添付のファイルはフォルダごと消す（計画 §0.5。一度も提出していないので記録から開かれることもない）
