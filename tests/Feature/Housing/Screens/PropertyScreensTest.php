@@ -23,6 +23,9 @@ class PropertyScreensTest extends HousingScreenTestCase
 {
     use SignsOutElsewhere;
 
+    /** 部品 _ajax_save_failure の script の目印（断られた応答を画面に戻すときに一緒に読む） */
+    private const SAVE_FAILURE_SCRIPT = 'function ajaxSaveFailureMessage(';
+
     private function storeNeedle(): string
     {
         return 'action="' . route('housing.properties.store') . '"';
@@ -176,7 +179,7 @@ class PropertyScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
         $this->enforceCsrfToken();
         $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
-        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertSame([$before->value], $after['evaluated'], '断られたのに画面のステータスが変わった');
@@ -195,7 +198,7 @@ class PropertyScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
         $this->changePasswordElsewhere();
         $response = $this->sendCaptured($request)->assertUnauthorized();
-        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
         $this->assertSame([$before->value], $after['evaluated'], '断られたのに画面のステータスが変わった');
@@ -213,12 +216,35 @@ class PropertyScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
         $property->delete();
         $response = $this->sendCaptured($request)->assertNotFound();
-        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame(['進捗ステータスの更新に失敗しました（404）'], $after['alerts']);
     }
 
-    /** 419・401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    /**
+     * 画面を開いたあとで役割が一般担当に変わってからステータスを変えると、403 の理由が出る（直す前は「…（403）」）。
+     * 利用者は住宅事業に属する経営層なので、部署の確かめは通り、役割の確かめ（role:executive,manager）が断る
+     */
+    public function test_a_status_change_by_a_user_who_lost_the_permission_says_why(): void
+    {
+        $property = $this->property();
+        $before = $property->status;
+        $html = $this->htmlOf(route('housing.properties.index'));
+        $factory = $this->xData($html, 'housingPropertyStatusCell');
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "construction"; }));';
+
+        $request = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps)['requests'][0];
+        $this->user->role = UserRole::Staff;
+        $this->user->save();
+        $response = $this->sendCaptured($request)->assertForbidden();
+        $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
+
+        $this->assertSame(['進捗ステータスを更新できませんでした。このページへのアクセス権限がありません。'], $after['alerts']);
+        $this->assertSame([$before->value], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame($before, $property->fresh()->status);
+    }
+
+    /** 419・401・403 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
     public function test_a_status_change_answered_with_html_keeps_the_numbered_message(): void
     {
         $before = $this->property()->status;
@@ -226,8 +252,8 @@ class PropertyScreensTest extends HousingScreenTestCase
         $factory = $this->xData($html, 'housingPropertyStatusCell');
         $steps = 'data.select(data.options.find(function (o) { return o.value === "construction"; }));';
 
-        foreach ([419, 401] as $status) {
-            $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value']);
+        foreach ([419, 401, 403] as $status) {
+            $after = $this->driveAlpine($html, 'housingPropertyStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
             $this->assertSame(["進捗ステータスの更新に失敗しました（{$status}）"], $after['alerts'], "{$status}: 番号つきの今の文でない");
             $this->assertSame([$before->value], $after['evaluated'], "{$status}: 断られたのに画面のステータスが変わった");

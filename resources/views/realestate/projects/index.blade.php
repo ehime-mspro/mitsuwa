@@ -185,6 +185,7 @@
     </div>
 </div>
 
+@include('_partials._ajax_save_failure')
 <script>
 // ステータスポップオーバー: バッジクリックで全ステータスをバッジ風に表示し、選択で Ajax 即更新
 window.__projectStatusOptions = @json($statusOptions);
@@ -236,9 +237,9 @@ function projectStatusCell(id, initialValue, initialLabel, initialBadgeClass) {
             .then(function(r) {
                 if (!r.ok) {
                     self.submitting = false;
-                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    // 文は部品 _ajax_save_failure が作る（419・401 はサーバーの日本語の理由・403 は「ステータスを更新できませんでした。」＋理由・ほかは番号つきの今の文）
                     return r.json().catch(function() { return null; }).then(function(body) {
-                        alert((r.status === 419 || r.status === 401) && body && body.message ? body.message : 'ステータスの更新に失敗しました（' + r.status + '）');
+                        alert(ajaxSaveFailureMessage(r.status, body, 'ステータスを更新できませんでした。', 'ステータスの更新に失敗しました（' + r.status + '）'));
                         return null;
                     });
                 }

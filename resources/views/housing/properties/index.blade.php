@@ -313,6 +313,7 @@
 
     <x-pager :paginator="$properties" class="mt-4" />
 
+@include('_partials._ajax_save_failure')
 <script>
 // 進捗ステータスポップオーバー: バッジクリックで全ステータスをバッジ色のまま表示し、選択で Ajax 即更新
 window.__housingPropertyStatusOptions = @json($statusOptions);
@@ -372,9 +373,9 @@ function housingPropertyStatusCell(id, initialValue, initialLabel, initialBadgeS
             .then(function(r) {
                 if (!r.ok) {
                     self.submitting = false;
-                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    // 文は部品 _ajax_save_failure が作る（419・401 はサーバーの日本語の理由・403 は「進捗ステータスを更新できませんでした。」＋理由・ほかは番号つきの今の文）
                     return r.json().catch(function() { return null; }).then(function(body) {
-                        alert((r.status === 419 || r.status === 401) && body && body.message ? body.message : '進捗ステータスの更新に失敗しました（' + r.status + '）');
+                        alert(ajaxSaveFailureMessage(r.status, body, '進捗ステータスを更新できませんでした。', '進捗ステータスの更新に失敗しました（' + r.status + '）'));
                         return null;
                     });
                 }

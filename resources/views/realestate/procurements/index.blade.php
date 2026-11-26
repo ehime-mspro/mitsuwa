@@ -252,6 +252,7 @@
     </div>
 </div>
 
+@include('_partials._ajax_save_failure')
 <script>
 // ステータスポップオーバー: バッジクリックで全ステータスをバッジ風に表示し、選択で Ajax 即更新。
 // 選択肢と更新先エンドポイントは種別（procurement / project）ごとに引く。
@@ -312,10 +313,10 @@ function realestateStatusCell(kind, id, initialValue, initialLabel, initialBadge
             .then(function(r) {
                 if (!r.ok) {
                     self.submitting = false;
-                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。
-                    // 422（契約のある仕入れ案件を「販売済」から戻そうとした。Bug #139）も理由を出す。ほかは番号つきの今の文
+                    // 422（契約のある仕入れ案件を「販売済」から戻そうとした。Bug #139）は理由を出す。ほかは部品 _ajax_save_failure が
+                    // 文を作る（419・401 はサーバーの日本語の理由・403 は「ステータスを更新できませんでした。」＋理由・ほかは番号つきの今の文）
                     return r.json().catch(function() { return null; }).then(function(body) {
-                        alert((r.status === 419 || r.status === 401 || r.status === 422) && body && body.message ? body.message : 'ステータスの更新に失敗しました（' + r.status + '）');
+                        alert(r.status === 422 && body && body.message ? body.message : ajaxSaveFailureMessage(r.status, body, 'ステータスを更新できませんでした。', 'ステータスの更新に失敗しました（' + r.status + '）'));
                         return null;
                     });
                 }

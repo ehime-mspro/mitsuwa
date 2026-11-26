@@ -16,6 +16,8 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
 {
     use SignsOutElsewhere;
 
+    /** 部品 _ajax_save_failure の script の目印（断られた応答を画面に戻すときに一緒に読む） */
+    private const SAVE_FAILURE_SCRIPT = 'function ajaxSaveFailureMessage(';
     private const DETAIL_SCRIPTS = ['function costExcelImporterFactory(', 'function costGridFactory('];
 
     public function test_a_procurement_is_registered_from_the_screen_with_a_cost_row(): void
@@ -180,7 +182,7 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
         $this->enforceCsrfToken();
         $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
-        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertSame(['assessment'], $after['evaluated'], '断られたのに画面のステータスが変わった');
@@ -198,7 +200,7 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
         $this->changePasswordElsewhere();
         $response = $this->sendCaptured($request)->assertUnauthorized();
-        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value']);
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
         $this->assertSame(['assessment'], $after['evaluated'], '断られたのに画面のステータスが変わった');
@@ -216,7 +218,7 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
         $this->deactivateSignedInUser();
         $response = $this->sendCaptured($request)->assertUnauthorized();
-        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame([self::INACTIVE_JSON_MESSAGE], $after['alerts']);
         $this->assertSame('assessment', $procurement->fresh()->status->value);
@@ -233,12 +235,34 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
         $procurement->delete();
         $response = $this->sendCaptured($request)->assertNotFound();
-        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)]);
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
         $this->assertSame(['ステータスの更新に失敗しました（404）'], $after['alerts']);
     }
 
-    /** 419・401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    /**
+     * 画面を開いたあとで権限が外れてからステータスを変えると、403 の理由が出る（直す前は「…（403）」）。
+     * 利用者は部署の無い経営層。管理者に変わると、部署の確かめ（department.access:realestate）が役割より先に断る
+     */
+    public function test_a_status_change_by_a_user_who_lost_the_permission_says_why(): void
+    {
+        $procurement = $this->procurement(['status' => 'assessment']);
+        $html = $this->htmlOf(route('realestate.procurements.index'));
+        $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
+        $factory = $this->xData($html, 'realestateStatusCell');
+
+        $request = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps)['requests'][0];
+        $this->user->role = UserRole::Manager;
+        $this->user->save();
+        $response = $this->sendCaptured($request)->assertForbidden();
+        $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->asFetchResponse($response)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
+
+        $this->assertSame(['ステータスを更新できませんでした。この部門のデータへのアクセス権限がありません。'], $after['alerts']);
+        $this->assertSame(['assessment'], $after['evaluated'], '断られたのに画面のステータスが変わった');
+        $this->assertSame('assessment', $procurement->fresh()->status->value);
+    }
+
+    /** 419・401・403 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
     public function test_a_status_change_answered_with_html_keeps_the_numbered_message(): void
     {
         $this->procurement(['status' => 'assessment']);
@@ -246,8 +270,8 @@ class ProcurementScreensTest extends RealEstateScreenTestCase
         $steps = 'data.select(data.options.find(function (o) { return o.value === "negotiating"; }));';
         $factory = $this->xData($html, 'realestateStatusCell');
 
-        foreach ([419, 401] as $status) {
-            $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value']);
+        foreach ([419, 401, 403] as $status) {
+            $after = $this->driveAlpine($html, 'realestateStatusCell', $factory, $steps, [$this->htmlResponse($status)], true, ['value'], withScripts: [self::SAVE_FAILURE_SCRIPT]);
 
             $this->assertSame(["ステータスの更新に失敗しました（{$status}）"], $after['alerts'], "{$status}: 番号つきの今の文でない");
             $this->assertSame(['assessment'], $after['evaluated'], "{$status}: 断られたのに画面のステータスが変わった");
