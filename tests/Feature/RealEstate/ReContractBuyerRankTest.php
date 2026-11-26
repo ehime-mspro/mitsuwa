@@ -331,9 +331,10 @@ class ReContractBuyerRankTest extends TestCase
     /**
      * 論理削除済みの買主でもランクは更新される（設計書 §4）。
      *
-     * ⚠ この経路は実在する。`validateContract()` の `exists:buyers,id` は Laravel の
-     *    DatabasePresenceVerifier がテーブルを直接引くので **SoftDeletingScope を通らない**。
-     *    削除済み買主の id はバリデーションを素通りしてフックまで届く。
+     * ⚠ 2026-11-26 から、新しい契約に削除済みの買主を付ける HTTP の経路は無い。保存の入力チェックが画面の選択肢と
+     *    同じ集合（Buyer::selectableForRealEstateContract()。削除していない買主＋今の買主）だけを受け付けるので、
+     *    手で番号を書き換えた送信も断る（docs/RULES.md Bug #149 の追記。断ることは Screens/ContractBuyerChoiceTest）。
+     *    それでもフックの `withTrashed()` は守りとして残すので、モデルを直接作って固定する（建売の契約と同じ扱い）。
      *
      * ⚠ フックが `Buyer::withTrashed()` でなく素の `Buyer::find()` だと null が返り、
      *    `?->` で**無音で何も起きない**（例外も出ない）。このテストが唯一その退行を捕まえる。
@@ -346,11 +347,19 @@ class ReContractBuyerRankTest extends TestCase
         $buyer->delete();
         $this->assertSoftDeleted('buyers', ['id' => $buyer->id]);
 
-        $response = $this->actingAs($this->executive())
-            ->post('/realestate/contracts', $this->procurementPayload($proc, $buyer));
+        ReContract::create([
+            'department'           => 'realestate',
+            'contract_type'        => ReContractType::ProcurementHouse->value,
+            'status'               => ReContractStatus::Contracted->value,
+            'contract_date'        => '2026-07-19',
+            'property_name'        => 'ランク検証物件',
+            'procurement_id'       => $proc->id,
+            'buyer_id'             => $buyer->id,
+            'contract_amount_land' => 30000000,
+            'cost_amount'          => 25000000,
+            'created_by'           => 1,
+        ]);
 
-        $response->assertSessionHasNoErrors();
-        $response->assertRedirect();
         $this->assertSame(BuyerRank::Contracted, $this->rankOf($buyer, 'realestate'));
     }
 
