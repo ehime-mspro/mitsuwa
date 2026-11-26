@@ -21,8 +21,10 @@ class SaveAjaxFailureScanTest extends TestCase
 {
     /**
      * 部品ごとの [定義を持つファイル, 定義の目印, 呼び出しの目印, 読み込みの字, 呼ぶファイルの下限]。
-     * 下限は 2026-11-26 の実数（保存の Ajax の部品 6: 3 一覧・_buyer-select・supplier-picker・buyers/_xhr_failure_message ／
-     * XMLHttpRequest の部品 2: buyers/index・buyers/_form）。走査が空振りして緑になるのを防ぐ。
+     * 呼ぶファイルの実数（2026-11-26）は、保存の Ajax の部品 6（3 一覧・_buyer-select・supplier-picker・buyers/_xhr_failure_message）・
+     * XMLHttpRequest の部品 2（buyers/index・buyers/_form）。下限は走査が空振りして緑になるのを防ぐためのもの。
+     * ⚠ 実数ちょうどにしない（正当に 1 画面減らしただけで「走査が機能していない」と誤った理由で落ちる。GetAjaxFailureScanTest と同じ）。
+     *   走査が壊れれば 0 になるので、この値でも分かる。
      */
     private const PARTIALS = [
         'save' => [
@@ -30,14 +32,14 @@ class SaveAjaxFailureScanTest extends TestCase
             'function ajaxSaveFailureMessage(',
             'ajaxSaveFailureMessage(',
             "@include('_partials._ajax_save_failure')",
-            6,
+            4,
         ],
         'xhr' => [
             'buyers/_xhr_failure_message.blade.php',
             'function xhrFailureMessage(',
             'xhrFailureMessage(',
             "@include('buyers._xhr_failure_message')",
-            2,
+            1,
         ],
     ];
 
