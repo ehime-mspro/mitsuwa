@@ -196,7 +196,7 @@ class SupplierScreensTest extends RealEstateScreenTestCase
     public function test_the_quick_registration_after_the_password_changed_elsewhere_says_why(): void
     {
         $html = $this->htmlOf(route('realestate.procurements.create'));
-        $withPicker = ['function supplierPicker('];
+        $withPicker = ['function supplierPicker(', 'function ajaxSaveFailureMessage('];
 
         $request = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [], true, [], $withPicker)['requests'][0];
         $this->changePasswordElsewhere();
@@ -207,11 +207,11 @@ class SupplierScreensTest extends RealEstateScreenTestCase
         $this->assertSame(0, ReSupplier::count());
     }
 
-    /** ログインと関係の無い断り（開いたあとで役割が一般担当に変わった 403）は、番号つきの今の文のまま */
-    public function test_the_quick_registration_keeps_the_numbered_message_for_other_failures(): void
+    /** 画面を開いたあとで役割が一般担当に変わってから登録すると、403 の理由が小窓に出る（直す前は「登録に失敗しました（403）」） */
+    public function test_the_quick_registration_says_why_when_the_permission_was_lost(): void
     {
         $html = $this->htmlOf(route('realestate.procurements.create'));
-        $withPicker = ['function supplierPicker('];
+        $withPicker = ['function supplierPicker(', 'function ajaxSaveFailureMessage('];
 
         $request = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [], true, [], $withPicker)['requests'][0];
         $this->user->role = UserRole::Staff;
@@ -219,19 +219,39 @@ class SupplierScreensTest extends RealEstateScreenTestCase
         $response = $this->sendCaptured($request)->assertForbidden();
         $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->asFetchResponse($response)], true, ['quickError', 'quickModalOpen'], $withPicker);
 
-        $this->assertSame(['登録に失敗しました（403）', true], $after['evaluated']);
+        $this->assertSame(['登録できませんでした。このページへのアクセス権限がありません。', true], $after['evaluated']);
         $this->assertSame(0, ReSupplier::count());
     }
 
-    /** 401 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
-    public function test_the_quick_registration_keeps_the_numbered_message_when_the_body_is_not_json(): void
+    /** 419 は今までどおり仕入れ先の簡易登録の独自の文を出す（サーバーの文にも 403 の形にもしない） */
+    public function test_the_quick_registration_keeps_its_own_message_for_419(): void
     {
         $html = $this->htmlOf(route('realestate.procurements.create'));
         $withPicker = ['function supplierPicker('];
+        $own = 'セッションが切れました。ページを再読込してください。';
 
-        $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->htmlResponse(401)], true, ['quickError', 'quickModalOpen'], $withPicker);
+        $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->htmlResponse(419)], true, ['quickError', 'quickModalOpen'], $withPicker);
+        $this->assertSame([$own, true], $after['evaluated'], '本文が HTML の 419');
 
-        $this->assertSame(['登録に失敗しました（401）', true], $after['evaluated']);
+        $request = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [], true, [], $withPicker)['requests'][0];
+        $this->enforceCsrfToken();
+        $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
+        $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->asFetchResponse($response)], true, ['quickError', 'quickModalOpen'], $withPicker);
+        $this->assertSame([$own, true], $after['evaluated'], '本物の 419');
+        $this->assertSame(0, ReSupplier::count());
+    }
+
+    /** 401・403 でも本文が JSON でない（HTML で返った）ときは、番号つきの今の文（読めない本文を理由として出さない） */
+    public function test_the_quick_registration_keeps_the_numbered_message_when_the_body_is_not_json(): void
+    {
+        $html = $this->htmlOf(route('realestate.procurements.create'));
+        $withPicker = ['function supplierPicker(', 'function ajaxSaveFailureMessage('];
+
+        foreach ([401, 403] as $status) {
+            $after = $this->driveAlpine($html, 'procurementForm', 'procurementForm()', self::QUICK, [$this->htmlResponse($status)], true, ['quickError', 'quickModalOpen'], $withPicker);
+
+            $this->assertSame(["登録に失敗しました（{$status}）", true], $after['evaluated'], "{$status}: 番号つきの今の文でないか、小窓が閉じた");
+        }
     }
 
     // ============================================================

@@ -27,6 +27,9 @@ class CustomerScreensTest extends HousingScreenTestCase
     /** 断られた XMLHttpRequest の文を作る関数を持つ <script>（部品 buyers/_xhr_failure_message。2 画面が読む） */
     private const XHR_FAILURE_SCRIPT = 'function xhrFailureMessage';
 
+    /** 部品 _ajax_save_failure の script の目印（断られた応答を画面に戻すときに一緒に読む） */
+    private const SAVE_FAILURE_SCRIPT = 'function ajaxSaveFailureMessage(';
+
     protected function buyerFormUrl(): string
     {
         return route('housing.customers.create');
@@ -239,7 +242,7 @@ class CustomerScreensTest extends HousingScreenTestCase
 
         $request = $this->driveAlpine($html, 'buyerSelect', $factory, $steps)['requests'][0];
         $response = $this->sendCaptured($before($request));
-        $after = $this->driveAlpine($html, 'buyerSelect', $factory, $steps, [$this->asFetchResponse($response)], true, ['error', 'modalOpen']);
+        $after = $this->driveAlpine($html, 'buyerSelect', $factory, $steps, [$this->asFetchResponse($response)], true, ['error', 'modalOpen'], [self::SAVE_FAILURE_SCRIPT]);
 
         return [$response, $after['evaluated']];
     }
@@ -273,10 +276,16 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame(0, Buyer::count());
     }
 
-    /** ログインと関係の無い断り（開いたあとで役割が一般担当に変わった 403）は、番号つきの今の文のまま */
-    public function test_the_buyer_modal_keeps_the_numbered_message_for_other_failures(): void
+    /**
+     * 画面を開いたあとで役割が一般担当に変わってから小窓で登録・重複の確認をすると、403 の理由が出る
+     * （直す前は「登録に失敗しました（403）」「重複チェックに失敗しました（403）」）
+     */
+    public function test_the_buyer_modal_says_why_when_the_permission_was_lost(): void
     {
-        $expected = ['submitModal' => '登録に失敗しました（403）', 'checkDup' => '重複チェックに失敗しました（403）'];
+        $expected = [
+            'submitModal' => '登録できませんでした。このページへのアクセス権限がありません。',
+            'checkDup' => '重複を確認できませんでした。このページへのアクセス権限がありません。',
+        ];
         foreach ($expected as $op => $message) {
             [$response, $state] = $this->modalAfterFailure($op, function (array $request) {
                 $this->user->role = UserRole::Staff;
@@ -286,7 +295,7 @@ class CustomerScreensTest extends HousingScreenTestCase
             });
 
             $response->assertForbidden();
-            $this->assertSame([$message, true], $state, "{$op}: 番号つきの今の文でない");
+            $this->assertSame([$message, true], $state, "{$op}: 403 の理由が小窓に出ないか、小窓が閉じた");
             $this->user->role = UserRole::Executive;
             $this->user->save();
         }
@@ -299,8 +308,8 @@ class CustomerScreensTest extends HousingScreenTestCase
         $factory = $this->xData($html, 'buyerSelect');
 
         foreach (['submitModal' => '登録に失敗しました', 'checkDup' => '重複チェックに失敗しました'] as $op => $message) {
-            foreach ([419, 401] as $status) {
-                $after = $this->driveAlpine($html, 'buyerSelect', $factory, $this->modalSteps($op), [$this->htmlResponse($status)], true, ['error', 'modalOpen']);
+            foreach ([419, 401, 403] as $status) {
+                $after = $this->driveAlpine($html, 'buyerSelect', $factory, $this->modalSteps($op), [$this->htmlResponse($status)], true, ['error', 'modalOpen'], [self::SAVE_FAILURE_SCRIPT]);
 
                 $this->assertSame(["{$message}（{$status}）", true], $after['evaluated'], "{$op} {$status}: 番号つきの今の文でないか、小窓が閉じた");
             }

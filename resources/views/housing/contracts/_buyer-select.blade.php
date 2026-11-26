@@ -152,6 +152,8 @@
     </div>
 </div>
 
+{{-- 断られた保存の Ajax の文（小窓の登録・重複の確認。ログインが切れた・権限が無い） --}}
+@include('_partials._ajax_save_failure')
 <script>
 function buyerSelect(initialName) {
     return {
@@ -203,9 +205,9 @@ function buyerSelect(initialName) {
             .then(function(res) {
                 if (!res.ok) {
                     self.duplicates = [];
-                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    // 文は部品 _ajax_save_failure が作る（419・401 はサーバーの日本語の理由・403 は「重複を確認できませんでした。」＋理由・ほかは番号つきの今の文）
                     return res.json().catch(function() { return null; }).then(function(body) {
-                        self.error = (res.status === 419 || res.status === 401) && body && body.message ? body.message : '重複チェックに失敗しました（' + res.status + '）';
+                        self.error = ajaxSaveFailureMessage(res.status, body, '重複を確認できませんでした。', '重複チェックに失敗しました（' + res.status + '）');
                         return null;
                     });
                 }
@@ -245,9 +247,9 @@ function buyerSelect(initialName) {
                     });
                 }
                 if (!res.ok) {
-                    // 419・401（ログインが切れた・ほかの画面でログアウトした・パスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
+                    // 文は部品 _ajax_save_failure が作る（419・401 はサーバーの日本語の理由・403 は「登録できませんでした。」＋理由・ほかは番号つきの今の文）
                     return res.json().catch(function() { return null; }).then(function(body) {
-                        throw new Error((res.status === 419 || res.status === 401) && body && body.message ? body.message : '登録に失敗しました（' + res.status + '）');
+                        throw new Error(ajaxSaveFailureMessage(res.status, body, '登録できませんでした。', '登録に失敗しました（' + res.status + '）'));
                     });
                 }
                 return res.json();

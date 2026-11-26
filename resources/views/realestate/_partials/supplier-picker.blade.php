@@ -123,6 +123,8 @@
 
 {{-- 断られた GET の Ajax の文（仕入れ先の検索。ログインが切れた・権限が無い） --}}
 @include('_partials._ajax_get_failure')
+{{-- 断られた保存の Ajax の文（簡易登録の 401・403 とほかの番号。419 は下の独自の文） --}}
+@include('_partials._ajax_save_failure')
 <script>
 function supplierPicker() {
     return {
@@ -258,11 +260,10 @@ function supplierPicker() {
                         }
                     }
                     self.quickError = firstError || result.data.message || '入力内容に誤りがあります。';
-                } else if (result.status === 401 && result.data && typeof result.data.message === 'string' && result.data.message !== '') {
-                    // 401（ほかの画面でパスワードが変わった・無効にされた）はサーバーの日本語の理由を出す（Bug #137）。ほかは番号つきの今の文
-                    self.quickError = result.data.message;
                 } else {
-                    self.quickError = '登録に失敗しました（' + result.status + '）';
+                    // 文は部品 _ajax_save_failure が作る（401 はサーバーの日本語の理由・403 は「登録できませんでした。」＋理由・ほかは番号つきの今の文）。
+                    // 419 は上で独自の文を出して止まるので、ここには来ない
+                    self.quickError = ajaxSaveFailureMessage(result.status, result.data, '登録できませんでした。', '登録に失敗しました（' + result.status + '）');
                 }
             })
             .catch(function() {
