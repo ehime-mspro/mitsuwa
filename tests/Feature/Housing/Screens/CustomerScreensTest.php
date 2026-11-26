@@ -8,6 +8,8 @@ use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\File;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksRankMenu;
 use Tests\Concerns\RunsBuyerFormScript;
 use Tests\Concerns\SignsOutElsewhere;
 
@@ -21,6 +23,7 @@ use Tests\Concerns\SignsOutElsewhere;
  */
 class CustomerScreensTest extends HousingScreenTestCase
 {
+    use ChecksRankMenu;
     use RunsBuyerFormScript;
     use SignsOutElsewhere;
 
@@ -358,7 +361,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
         $this->enforceCsrfToken();
         $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertNotSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
 
@@ -367,11 +370,11 @@ class CustomerScreensTest extends HousingScreenTestCase
         $buyer->delete();
         $this->app->forgetInstance(ValidateCsrfToken::class); // 鍵の確かめを、テストの既定（素通り）に戻す
         $response = $this->sendCaptured($request)->assertNotFound();
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
         $this->assertSame(['ランクを変更できませんでした（404）'], $after['alerts']);
 
         // 419 でも本文が JSON でない（HTML の画面が返った）なら、番号つきの文
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [['status' => 419, 'body' => '<!DOCTYPE html><title>x</title>']], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [['status' => 419, 'body' => '<!DOCTYPE html><title>x</title>']], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
         $this->assertSame(['ランクを変更できませんでした（419）'], $after['alerts']);
     }
 
@@ -389,7 +392,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
         $this->changePasswordElsewhere();
         $response = $this->sendCaptured($request)->assertUnauthorized();
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
         $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
 
         // ② 入り直して画面を開いたあとで、無効にされた
@@ -397,22 +400,69 @@ class CustomerScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
         $this->deactivateSignedInUser();
         $response = $this->sendCaptured($request)->assertUnauthorized();
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
         $this->assertSame([self::INACTIVE_JSON_MESSAGE], $after['alerts']);
 
         // ③ 401 でも本文が JSON でない（HTML の画面が返った）なら、番号つきの文
-        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [['status' => 401, 'body' => '<!DOCTYPE html><title>x</title>']], withScripts: [self::XHR_FAILURE_SCRIPT]);
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [['status' => 401, 'body' => '<!DOCTYPE html><title>x</title>']], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
         $this->assertSame(['ランクを変更できませんでした（401）'], $after['alerts']);
 
         $this->assertNotSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
     }
 
     /**
-     * 断られた XMLHttpRequest の 419 の理由を読むのは部品（buyers/_xhr_failure_message）の 1 か所だけ（Bug #137 の後回し）。
-     * 直す前は buyers/index と buyers/_form に同じ読み取りが 2 回書いてあった。
-     * ⚠ 見るのは `xhr.status === 419` の字面だけ（変数の名前を変えた書き足しは見えない）。
+     * 一覧を開いたあとで役割が一般担当に変わってからランクを変えると、403 の理由（サーバーの日本語の文）を
+     * 「ランクを変更できませんでした。」に続けて出す（直す前は「ランクを変更できませんでした（403）」）。
+     * 403 でも本文が JSON でなければ番号つきの文。
      */
-    public function test_the_419_reason_of_an_xhr_is_read_in_one_place(): void
+    public function test_a_rank_change_by_a_user_who_lost_the_permission_says_why(): void
+    {
+        $steps = fn (Buyer $buyer) => 'openRankDropdown({ style: {}, getBoundingClientRect: function () { return { bottom: 0, left: 0 }; } }, ' . $buyer->id . ', "housing"); selectRank("A");';
+        $buyer = $this->buyer();
+
+        $html = $this->htmlOf(route('housing.customers.index'));
+        $request = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer))['requests'][0];
+        $this->user->role = UserRole::Staff;
+        $this->user->save();
+        $response = $this->sendCaptured($request)->assertForbidden();
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->asFetchResponse($response)], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
+        $this->assertSame(['ランクを変更できませんでした。このページへのアクセス権限がありません。'], $after['alerts']);
+
+        $after = $this->driveAlpine($html, 'selectRank', '({})', $steps($buyer), [$this->htmlResponse(403)], withScripts: [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT]);
+        $this->assertSame(['ランクを変更できませんでした（403）'], $after['alerts']);
+
+        $this->assertNotSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
+    }
+
+    /**
+     * 買主一覧のランクの小窓は、ランクを変えられる人（経営層・管理者）にだけ描く。一般担当にはランクを見せるだけで、
+     * 押せる形にも小窓の要素と script にもしない（直す前は一般担当も押せて、選ぶと必ず 403 になっていた。Bug #96 と同じ形）。
+     */
+    #[DataProvider('rankMenuRoles')]
+    public function test_only_those_who_can_change_the_rank_can_open_the_rank_menu(UserRole $role, bool $canChange): void
+    {
+        $this->user = $this->member($role);
+        $buyer = $this->buyer();
+
+        $this->assertRankMenu($this->htmlOf(route('housing.customers.index')), $buyer, 'housing', $canChange);
+    }
+
+    public static function rankMenuRoles(): array
+    {
+        return [
+            '経営層' => [UserRole::Executive, true],
+            '管理者' => [UserRole::Manager, true],
+            '一般担当' => [UserRole::Staff, false],
+        ];
+    }
+
+    /**
+     * 断られた XMLHttpRequest の理由を読むのは部品（buyers/_xhr_failure_message）の 1 か所だけで、その部品は
+     * 保存の Ajax の部品（_partials/_ajax_save_failure の ajaxSaveFailureMessage）に決まりを任せる（設計メモ 2026-11-26-save-ajax-403-design.md）。
+     * 直す前は buyers/index と buyers/_form に 419 の読み取りが 2 回書いてあり（Bug #137 の後回し）、そのあとは部品の中に 419・401 だけの読み取りがあった。
+     * ⚠ 見るのは字面だけ（`xhr.status === 419` を変数の名前を変えて書き足したものは見えない）。
+     */
+    public function test_the_reason_of_a_refused_xhr_is_read_in_one_place(): void
     {
         $reads = [];
         $definitions = [];
@@ -429,8 +479,12 @@ class CustomerScreensTest extends HousingScreenTestCase
             }
         }
 
-        $this->assertSame(['buyers/_xhr_failure_message.blade.php'], $reads, 'XMLHttpRequest の 419 の理由を読む所が部品のほかにもある');
+        $this->assertSame([], $reads, 'XMLHttpRequest の 419 を自分で読んでいる所がある（部品 _ajax_save_failure に任せる）');
         $this->assertSame(['buyers/_xhr_failure_message.blade.php'], $definitions, 'xhrFailureMessage の定義が部品のほかにもある');
+
+        $partial = preg_replace('/\{\{--.*?--\}\}/s', '', file_get_contents(resource_path('views/buyers/_xhr_failure_message.blade.php')));
+        $this->assertStringContainsString('ajaxSaveFailureMessage(xhr.status', $partial, 'XMLHttpRequest の部品が ajaxSaveFailureMessage に決まりを任せていない');
+        $this->assertStringContainsString("@include('_partials._ajax_save_failure')", $partial, 'XMLHttpRequest の部品が保存の Ajax の部品を読み込んでいない');
     }
 
     /**
@@ -449,7 +503,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame(route('api.customers.add-department', $other), $request['url']);
         $this->enforceCsrfToken();
         $response = $this->sendCaptured($this->withExpiredToken($request))->assertStatus(419);
-        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT], $elements);
         $this->assertSame([self::EXPIRED_JSON_MESSAGE], $after['alerts']);
         $this->assertSame([], $after['navigations']);
         $this->assertFalse($other->fresh()->belongsToDepartment('housing'));
@@ -458,7 +512,7 @@ class CustomerScreensTest extends HousingScreenTestCase
         $other->delete();
         $this->app->forgetInstance(ValidateCsrfToken::class); // 鍵の確かめを、テストの既定（素通り）に戻す
         $response = $this->sendCaptured($request)->assertNotFound();
-        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT], $elements);
         $this->assertSame(['この部署に取り込めませんでした（404）'], $after['alerts']);
     }
 
@@ -474,9 +528,32 @@ class CustomerScreensTest extends HousingScreenTestCase
         $request = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [], true, [], [], $elements)['requests'][0];
         $this->changePasswordElsewhere();
         $response = $this->sendCaptured($request)->assertUnauthorized();
-        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT], $elements);
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT], $elements);
 
         $this->assertSame([self::SIGNED_OUT_JSON_MESSAGE], $after['alerts']);
+        $this->assertSame([], $after['navigations']);
+        $this->assertFalse($other->fresh()->belongsToDepartment('housing'));
+    }
+
+    /**
+     * 登録画面を開いたあとで役割が一般担当に変わってから「この部署に取り込む」を押すと、403 の理由を
+     * 「この部署に取り込めませんでした。」に続けて出し、画面は移らない（直す前は「…（403）」）。
+     */
+    public function test_an_add_to_department_by_a_user_who_lost_the_permission_says_why(): void
+    {
+        $other = Buyer::create(['last_name' => '佐藤', 'first_name' => '一郎', 'prefecture' => '愛媛県', 'city' => '松山市']);
+        $other->addToDepartment('realestate', '2026-08-01');
+        $html = $this->htmlOf(route('housing.customers.create'));
+        $elements = ['input[name="last_name"]' => '佐藤', 'input[name="first_name"]' => '一郎', 'input[name="acquired_date"]' => '2026-10-01'];
+        $steps = 'data.addToDepartment(' . $other->id . ');';
+
+        $request = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [], true, [], [], $elements)['requests'][0];
+        $this->user->role = UserRole::Staff;
+        $this->user->save();
+        $response = $this->sendCaptured($request)->assertForbidden();
+        $after = $this->driveAlpine($html, 'buyerForm', 'buyerForm()', $steps, [$this->asFetchResponse($response)], true, [], [self::XHR_FAILURE_SCRIPT, self::SAVE_FAILURE_SCRIPT], $elements);
+
+        $this->assertSame(['この部署に取り込めませんでした。このページへのアクセス権限がありません。'], $after['alerts']);
         $this->assertSame([], $after['navigations']);
         $this->assertFalse($other->fresh()->belongsToDepartment('housing'));
     }

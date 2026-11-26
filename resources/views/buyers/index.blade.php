@@ -3,6 +3,11 @@
 @section('title', '顧客一覧（' . $deptLabel . '）')
 
 @section('content')
+{{-- ランクを変えられる人（経営層・管理者。api/customers/{buyer}/rank は role:executive,manager）にだけ、バッジを押せる形で出し、
+     ランクの小窓の要素と script を描く。一般担当には見せるだけ（設計メモ 2026-11-26-save-ajax-403-design.md・Bug #96 と同じ形） --}}
+@php
+    $canChangeRank = auth()->user()->isManagerOrAbove();
+@endphp
 <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
     ダッシュボード &gt; {{ $deptLabel }} &gt; <span class="text-gray-800 font-medium">顧客一覧</span>
 </div>
@@ -71,12 +76,14 @@
                             </td>
                         @endif
                         <td style="font-size: 14px; padding: 11px 12px; white-space: nowrap; text-align: center;">
-                            @if($pivot)
+                            @if($pivot && $canChangeRank)
                                 <span class="rank-badge"
                                       data-buyer-id="{{ $buyer->id }}"
                                       data-department="{{ $department }}"
                                       style="display: inline-block; padding: 3px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; {{ $pivot->rank_badge_style }}"
                                       onclick="openRankDropdown(this, {{ $buyer->id }}, '{{ $department }}')">{{ $pivot->rank->label() }}</span>
+                            @elseif($pivot)
+                                <span style="display: inline-block; padding: 3px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: default; {{ $pivot->rank_badge_style }}">{{ $pivot->rank->label() }}</span>
                             @endif
                         </td>
                         <td style="font-size: 14px; padding: 11px 12px; white-space: nowrap; text-align: left; padding-left: 16px;">
@@ -121,6 +128,7 @@
     @endif
 @endif
 
+@if($canChangeRank)
 {{-- ランク変更ドロップダウン（グローバル1つ — body直下、position:fixed） --}}
 <div id="rank-dropdown-global" style="display: none; position: fixed; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 9000; padding: 6px; min-width: 150px;">
     @foreach(\App\Enums\BuyerRank::cases() as $r)
@@ -175,9 +183,10 @@ function selectRank(rank) {
             _currentBadge.style.cssText = 'display: inline-block; padding: 3px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; ' + data.badgeStyle;
             return;
         }
-        // 断られたら理由を出す（直す前は何も出さず、ランクが変わらないだけだった）。419（ログインが切れた・ほかの画面で
-        // ログアウトした）はサーバーの日本語の理由、ほかは番号つきの文（Bug #137。文は部品 buyers/_xhr_failure_message が作る）
-        alert(xhrFailureMessage(xhr, 'ランクを変更できませんでした（' + xhr.status + '）'));
+        // 断られたら理由を出す（直す前は何も出さず、ランクが変わらないだけだった）。419・401（ログインが切れた・ほかの画面で
+        // ログアウトした）はサーバーの日本語の理由、403（役割・部署が変わった）は「ランクを変更できませんでした。」＋理由、
+        // ほかは番号つきの文（Bug #137。文は部品 buyers/_xhr_failure_message が作る）
+        alert(xhrFailureMessage(xhr, 'ランクを変更できませんでした。', 'ランクを変更できませんでした（' + xhr.status + '）'));
     };
     // 通信そのものが失敗した（接続が切れた など）。サーバーに届いて変わった可能性もあるので、開き直して確かめてもらう
     xhr.onerror = function() {
@@ -194,4 +203,5 @@ document.addEventListener('click', function(e) {
     }
 });
 </script>
+@endif
 @endsection

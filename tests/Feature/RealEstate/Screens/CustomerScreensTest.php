@@ -2,12 +2,15 @@
 
 namespace Tests\Feature\RealEstate\Screens;
 
+use App\Enums\UserRole;
 use App\Models\Buyer;
 use App\Models\BuyerSurvey;
 use App\Models\SurveyQuestion;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Exceptions;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksRankMenu;
 use Tests\Concerns\RunsBuyerFormScript;
 
 /**
@@ -20,6 +23,7 @@ use Tests\Concerns\RunsBuyerFormScript;
  */
 class CustomerScreensTest extends RealEstateScreenTestCase
 {
+    use ChecksRankMenu;
     use RunsBuyerFormScript;
 
     private function question(string $label = 'ご希望のエリア'): SurveyQuestion
@@ -36,6 +40,27 @@ class CustomerScreensTest extends RealEstateScreenTestCase
 
         $this->assertSame(1, preg_match('/href="' . preg_quote(route('realestate.customers.show', $buyer), '/') . '"/', $html), '一覧に不動産の顧客が出ていない');
         $this->assertFalse(str_contains($html, '住宅 だけ'), '住宅事業だけの顧客が不動産の一覧に出ている');
+    }
+
+    /**
+     * 不動産の買主一覧も、ランクの小窓はランクを変えられる人（経営層・管理者）にだけ描く（画面は住宅事業と共用。
+     * 一般担当にはランクを見せるだけ。直す前は押せて、選ぶと必ず 403 になっていた）。
+     */
+    #[DataProvider('rankMenuRoles')]
+    public function test_a_staff_member_sees_the_rank_without_the_menu(UserRole $role, bool $canChange): void
+    {
+        $this->user = $this->userWithRole($role);
+        $buyer = $this->buyer();
+
+        $this->assertRankMenu($this->htmlOf(route('realestate.customers.index')), $buyer, 'realestate', $canChange);
+    }
+
+    public static function rankMenuRoles(): array
+    {
+        return [
+            '管理者' => [UserRole::Manager, true],
+            '一般担当' => [UserRole::Staff, false],
+        ];
     }
 
     public function test_a_customer_is_registered_from_the_screen_with_a_survey_answer(): void
