@@ -149,6 +149,31 @@ class Buyer extends Model
     }
 
     /**
+     * 不動産の契約の画面の買主の選択肢（削除していない買主〈部署で絞らない〉＋今の買主〈削除済みでも先頭に残す〉）。
+     * 登録は今の買主が無いので、削除していない買主だけ。
+     *
+     * 画面（契約の登録・編集）と、その保存の入力チェック（Rule::in）が同じ集合を使う＝手で番号を書き換えた送信で、
+     * 今の買主でない削除済みの買主を紐付けさせない（`exists:buyers,id` は論理削除を見ない。紐付くと契約の保存のフックが
+     * その人を不動産の部署で「成約」にする。docs/RULES.md Bug #149 の追記）。
+     * 今の買主を残すのは、保存で黙って別の人に変えないため（Bug #58・#113 と同じ形）。
+     * ⚠ 列を絞らない（画面が trashed() で「（削除済み）」を出す。Bug #58）。
+     *
+     * @return \Illuminate\Support\Collection<int, Buyer>
+     */
+    public static function selectableForRealEstateContract(?int $currentBuyerId = null): \Illuminate\Support\Collection
+    {
+        $buyers = static::orderBy('last_name_kana')->orderBy('first_name_kana')->get();
+        if ($currentBuyerId !== null && ! $buyers->contains('id', $currentBuyerId)) {
+            $current = static::withTrashed()->find($currentBuyerId);
+            if ($current) {
+                $buyers->prepend($current);
+            }
+        }
+
+        return $buyers->toBase();
+    }
+
+    /**
      * キーワード検索（氏名・フリガナ・電話番号）
      */
     public function scopeKeywordSearch($query, ?string $keyword)

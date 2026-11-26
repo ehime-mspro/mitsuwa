@@ -171,7 +171,7 @@
                     <select name="buyer_id">
                         <option value="">— 買主マスタから選択 —</option>
                         @foreach($buyers as $b)
-                            <option value="{{ $b->id }}" {{ old('buyer_id', $contract->buyer_id) == $b->id ? 'selected' : '' }}>{{ $b->last_name }} {{ $b->first_name }}</option>
+                            <option value="{{ $b->id }}" {{ old('buyer_id', $contract->buyer_id) == $b->id ? 'selected' : '' }}>{{ $b->last_name }} {{ $b->first_name }}@if($b->trashed())（削除済み）@endif</option>
                         @endforeach
                     </select>
                 </div>

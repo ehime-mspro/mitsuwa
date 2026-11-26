@@ -140,9 +140,8 @@ class ReContractController extends Controller
             ->orderBy('project_code')
             ->get(['id', 'project_code', 'project_name']);
 
-        // 買主マスタ
-        $buyers = Buyer::orderBy('last_name_kana')->orderBy('first_name_kana')
-            ->get(['id', 'last_name', 'first_name']);
+        // 買主マスタ（削除していない買主。保存の入力チェックも同じ集合＝Buyer::selectableForRealEstateContract()）
+        $buyers = Buyer::selectableForRealEstateContract();
 
         // 担当者
         $staffUsers = User::assignable()->orderBy('name')->get(['id', 'name']);
@@ -310,16 +309,8 @@ class ReContractController extends Controller
         // 区画リスト（今の分譲地。入力エラーで戻ったときは選び直していた分譲地。今の区画は販売済みでも含める）
         $lots = $this->lotOptions(old('project_id', $contract->project_id), $contract->lot_id);
 
-        $buyers = Buyer::orderBy('last_name_kana')->orderBy('first_name_kana')
-            ->get(['id', 'last_name', 'first_name']);
-
-        // ソフトデリート済みの買主でも現在の契約に紐づいていれば選択肢に含める
-        if ($contract->buyer_id && !$buyers->contains('id', $contract->buyer_id)) {
-            $currentBuyer = Buyer::withTrashed()->find($contract->buyer_id, ['id', 'last_name', 'first_name']);
-            if ($currentBuyer) {
-                $buyers->prepend($currentBuyer);
-            }
-        }
+        // 削除していない買主＋今の買主（削除済みでも先頭に残す）。保存の入力チェックも同じ集合
+        $buyers = Buyer::selectableForRealEstateContract($contract->buyer_id);
 
         $staffUsers = User::assignableWith($contract->staff_user_id);
 
@@ -786,6 +777,18 @@ class ReContractController extends Controller
         return $held === null ? '区画を選んでください。' : strtr(self::LOT_HELD, [':number' => (string) $held->lot_number]);
     }
 
+    /**
+     * 買主の規則。画面の選択肢と同じ集合（削除していない買主＋今の買主）だけを受け付ける
+     * （`exists:buyers,id` は論理削除を見ないので、手で番号を書き換えた送信で、今の買主でない削除済みの買主を紐付けられた。
+     * docs/RULES.md Bug #149 の追記）。断る文は validation.in「選択された買主は正しくありません。」。
+     * ⚠ 'integer' を足さない（AmountLimitTest の走査は文字列の規則を 1 つずつ読み、'integer' だけの文字列を「上限なし」として落とす）。
+     *   Rule::in で番号の文字だけが通る
+     */
+    private function buyerRule(?ReContract $current): array
+    {
+        return ['required', Rule::in(Buyer::selectableForRealEstateContract($current?->buyer_id)->pluck('id')->all())];
+    }
+
     private function validateContract(Request $request, ReContractType $contractType, ?ReContract $current = null): array
     {
         $rules = [
@@ -814,7 +817,7 @@ class ReContractController extends Controller
             $rules['procurement_lot_id'] = ($lotRequired ? 'required' : 'nullable')
                 . '|integer|exists:re_procurement_lots,id,procurement_id,' . $chosenId;
             $rules['contract_date']   = 'required|date';
-            $rules['buyer_id']        = 'required|exists:buyers,id';
+            $rules['buyer_id']        = $this->buyerRule($current);
             $rules['contract_amount_land']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['contract_amount_building'] = 'nullable|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['tax_rate']                 = 'nullable|numeric|min:0|max:99.99';
@@ -826,7 +829,7 @@ class ReContractController extends Controller
             $rules['project_id']      = 'required|exists:re_projects,id';
             $rules['lot_id']          = 'required|exists:re_project_lots,id';
             $rules['contract_date']   = 'required|date';
-            $rules['buyer_id']        = 'required|exists:buyers,id';
+            $rules['buyer_id']        = $this->buyerRule($current);
             $rules['contract_amount_land'] = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['cost_amount']     = 'required|integer|min:0|max:' . self::MAX_INT_COLUMN;
             $rules['property_name']   = 'required|string|max:200';

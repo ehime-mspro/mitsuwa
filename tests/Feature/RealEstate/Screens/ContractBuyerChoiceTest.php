@@ -43,7 +43,7 @@ class ContractBuyerChoiceTest extends RealEstateScreenTestCase
     /** 不動産の部署のランク（論理削除済みの買主も読む） */
     private function realEstateRank(Buyer $buyer): ?string
     {
-        return BuyerDepartmentPivot::where('buyer_id', $buyer->id)->where('department', 'realestate')->value('rank');
+        return BuyerDepartmentPivot::where('buyer_id', $buyer->id)->where('department', 'realestate')->first()?->rank?->value;
     }
 
     /**
