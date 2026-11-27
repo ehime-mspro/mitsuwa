@@ -465,4 +465,33 @@ class CustomerScreensTest extends RealEstateScreenTestCase
             '一般担当' => [UserRole::Staff],
         ];
     }
+
+    /**
+     * 不動産の有効な設問が無いときの一覧の案内は、設問管理（admin の門は role:executive）へのリンクを経営層にだけ出し、
+     * ほかの人には「経営層が…」の文だけを出す（直す前は全員にリンクが出ていて、押すと 403 になっていた）。
+     * 有効な設問が 1 つでもあれば、案内はどの役割にも出ない。
+     */
+    #[DataProvider('buttonRoles')]
+    public function test_the_survey_setup_notice_links_to_the_master_only_for_executives(UserRole $role): void
+    {
+        $this->user = $this->userWithRole($role);
+        $this->buyer();
+        $admin = route('admin.survey-questions.index', ['department' => 'realestate']);
+        $link = '/ℹ️ 不動産事業のアンケートは現在未設定です。<a href="' . preg_quote(e($admin), '/') . '"[^>]*>マスタ管理 &gt; アンケート設問管理<\/a>から設問を追加すると、顧客登録時にアンケートが利用可能になります。/u';
+        $plain = 'ℹ️ 不動産事業のアンケートは現在未設定です。経営層がマスタ管理 &gt; アンケート設問管理から設問を追加すると、顧客登録時にアンケートが利用可能になります。';
+
+        $html = $this->htmlOf(route('realestate.customers.index'));
+
+        if ($role === UserRole::Executive) {
+            $this->assertSame(1, preg_match_all($link, $html), '経営層の一覧に設問管理へのリンクつきの案内が無い');
+            $this->assertSame(0, substr_count($html, $plain), '経営層の一覧に文だけの案内も出ている');
+            $this->assertSame(200, $this->actingAs($this->user)->get($admin)->status(), '案内の設問管理へのリンクを開けない');
+        } else {
+            $this->assertSame(1, substr_count($html, $plain), '経営層でない人の一覧に文だけの案内が無い');
+            $this->assertSame(0, substr_count($html, 'href="' . e($admin) . '"'), '経営層でない人の一覧に設問管理へのリンクがある');
+        }
+
+        SurveyQuestion::create(['department' => 'realestate', 'label' => 'ご希望のエリア', 'question_type' => 'text', 'sort_order' => 1, 'is_active' => true]);
+        $this->assertSame(0, substr_count($this->htmlOf(route('realestate.customers.index')), '現在未設定です'), '有効な設問があるのに案内が出ている');
+    }
 }

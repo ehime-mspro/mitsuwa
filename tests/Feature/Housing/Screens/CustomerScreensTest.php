@@ -641,4 +641,14 @@ class CustomerScreensTest extends HousingScreenTestCase
             '一般担当' => [UserRole::Staff],
         ];
     }
+
+    /** 不動産のアンケートの案内（有効な設問が無いとき）は、住宅事業の一覧にはどの役割にも出ない */
+    #[DataProvider('buttonRoles')]
+    public function test_the_housing_list_has_no_realestate_notice(UserRole $role): void
+    {
+        $this->user = $this->member($role);
+        $this->buyer();
+
+        $this->assertSame(0, substr_count($this->htmlOf(route('housing.customers.index')), '現在未設定です'), '住宅事業の一覧に不動産の案内が出ている');
+    }
 }

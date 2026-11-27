@@ -5,10 +5,12 @@
 @section('content')
 {{-- ランクを変えられる人（経営層・管理者。api/customers/{buyer}/rank は role:executive,manager）にだけ、バッジを押せる形で出し、
      ランクの小窓の要素と script を描く。一般担当には見せるだけ（設計メモ 2026-11-26-save-ajax-403-design.md・Bug #96 と同じ形）。
-     「新規登録」も送り先のルート（role:executive,manager）が通す人にだけ出す（設計メモ 2026-11-27-buyer-screen-buttons-design.md） --}}
+     「新規登録」も送り先のルート（role:executive,manager）が通す人にだけ出す（設計メモ 2026-11-27-buyer-screen-buttons-design.md）。
+     不動産の案内の設問管理へのリンクは経営層にだけ出す（admin の門は role:executive。ほかの人には文だけ） --}}
 @php
     $canChangeRank = auth()->user()->isManagerOrAbove();
     $canRegister = auth()->user()->isManagerOrAbove();
+    $canEditQuestions = auth()->user()->isExecutive();
 @endphp
 <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
     ダッシュボード &gt; {{ $deptLabel }} &gt; <span class="text-gray-800 font-medium">顧客一覧</span>
@@ -127,7 +129,11 @@
     @endphp
     @if(!$hasRealestateQuestions)
         <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px 18px; font-size: 13px; color: #0c4a6e; margin-top: 16px;">
-            ℹ️ 不動産事業のアンケートは現在未設定です。<a href="{{ route('admin.survey-questions.index', ['department' => 'realestate']) }}" style="color: #1d4ed8; text-decoration: underline;">マスタ管理 &gt; アンケート設問管理</a>から設問を追加すると、顧客登録時にアンケートが利用可能になります。
+            @if($canEditQuestions)
+                ℹ️ 不動産事業のアンケートは現在未設定です。<a href="{{ route('admin.survey-questions.index', ['department' => 'realestate']) }}" style="color: #1d4ed8; text-decoration: underline;">マスタ管理 &gt; アンケート設問管理</a>から設問を追加すると、顧客登録時にアンケートが利用可能になります。
+            @else
+                ℹ️ 不動産事業のアンケートは現在未設定です。経営層がマスタ管理 &gt; アンケート設問管理から設問を追加すると、顧客登録時にアンケートが利用可能になります。
+            @endif
         </div>
     @endif
 @endif
