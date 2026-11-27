@@ -3,6 +3,12 @@
 @section('title', '顧客詳細 — ' . $buyer->full_name)
 
 @section('content')
+{{-- ボタンは送り先のルートが通す人にだけ出す（設計メモ 2026-11-27-buyer-screen-buttons-design.md・Bug #96 と同じ形）。
+     顧客の編集・アンケートの追加と編集は role:executive,manager、顧客とアンケートの削除は role:executive --}}
+@php
+    $canManage = auth()->user()->isManagerOrAbove();
+    $canDelete = auth()->user()->isExecutive();
+@endphp
 <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
     ダッシュボード &gt; {{ $deptLabel }} &gt; <a href="{{ route("{$department}.customers.index") }}" class="text-gray-500 hover:text-emerald-600 hover:underline">顧客一覧</a> &gt; <span class="text-gray-800 font-medium">{{ $buyer->full_name }}</span>
 </div>
@@ -18,13 +24,17 @@
     <div style="display: flex; gap: 8px; align-items: center;">
         <a href="{{ route("{$department}.customers.index") }}"
            style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; background: #fff;">顧客一覧に戻る</a>
-        <a href="{{ route("{$department}.customers.edit", $buyer) }}"
-           style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
-        <form method="POST" action="{{ route("{$department}.customers.destroy", $buyer) }}" onsubmit="return confirm('本当に削除しますか？');" style="display: inline;">
-            @csrf
-            @method('DELETE')
-            <button type="submit" style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; cursor: pointer; background: #fff;">削除</button>
-        </form>
+        @if($canManage)
+            <a href="{{ route("{$department}.customers.edit", $buyer) }}"
+               style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 6px; text-decoration: none; background: #fff;">編集</a>
+        @endif
+        @if($canDelete)
+            <form method="POST" action="{{ route("{$department}.customers.destroy", $buyer) }}" onsubmit="return confirm('本当に削除しますか？');" style="display: inline;">
+                @csrf
+                @method('DELETE')
+                <button type="submit" style="display: inline-block; padding: 6px 16px; font-size: 13px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 6px; cursor: pointer; background: #fff;">削除</button>
+            </form>
+        @endif
     </div>
 </div>
 
@@ -110,11 +120,13 @@
             <span style="width: 4px; height: 18px; background: #059669; border-radius: 2px; flex-shrink: 0;"></span>
             アンケート履歴
         </div>
-        <a href="{{ route("{$department}.customers.surveys.create", $buyer) }}"
-           class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-3 py-1.5 rounded-md" style="font-size: 13px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            アンケートを追加
-        </a>
+        @if($canManage)
+            <a href="{{ route("{$department}.customers.surveys.create", $buyer) }}"
+               class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-3 py-1.5 rounded-md" style="font-size: 13px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                アンケートを追加
+            </a>
+        @endif
     </div>
 
     @forelse($buyer->surveys as $survey)
@@ -128,15 +140,19 @@
                 @endif
             </div>
             <div style="display: flex; gap: 6px; align-items: center;">
-                <a href="{{ route("{$department}.customers.surveys.edit", [$buyer, $survey]) }}"
-                   style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; text-decoration: none; background: #fff;">詳細</a>
-                <a href="{{ route("{$department}.customers.surveys.edit", [$buyer, $survey]) }}"
-                   style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
-                <form method="POST" action="{{ route("{$department}.customers.surveys.destroy", [$buyer, $survey]) }}" onsubmit="return confirm('このアンケートを削除しますか？');" style="display: inline;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
-                </form>
+                @if($canManage)
+                    <a href="{{ route("{$department}.customers.surveys.edit", [$buyer, $survey]) }}"
+                       style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #b45309; border: 1px solid #b45309; border-radius: 5px; text-decoration: none; background: #fff;">詳細</a>
+                    <a href="{{ route("{$department}.customers.surveys.edit", [$buyer, $survey]) }}"
+                       style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #059669; border: 1px solid #059669; border-radius: 4px; text-decoration: none; background: #fff;">編集</a>
+                @endif
+                @if($canDelete)
+                    <form method="POST" action="{{ route("{$department}.customers.surveys.destroy", [$buyer, $survey]) }}" onsubmit="return confirm('このアンケートを削除しますか？');" style="display: inline;">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" style="display: inline-block; padding: 3px 10px; font-size: 12px; font-weight: 600; color: #dc2626; border: 1px solid #dc2626; border-radius: 4px; cursor: pointer; background: #fff;">削除</button>
+                    </form>
+                @endif
             </div>
         </div>
     @empty

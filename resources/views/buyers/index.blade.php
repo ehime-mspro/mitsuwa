@@ -4,9 +4,11 @@
 
 @section('content')
 {{-- ランクを変えられる人（経営層・管理者。api/customers/{buyer}/rank は role:executive,manager）にだけ、バッジを押せる形で出し、
-     ランクの小窓の要素と script を描く。一般担当には見せるだけ（設計メモ 2026-11-26-save-ajax-403-design.md・Bug #96 と同じ形） --}}
+     ランクの小窓の要素と script を描く。一般担当には見せるだけ（設計メモ 2026-11-26-save-ajax-403-design.md・Bug #96 と同じ形）。
+     「新規登録」も送り先のルート（role:executive,manager）が通す人にだけ出す（設計メモ 2026-11-27-buyer-screen-buttons-design.md） --}}
 @php
     $canChangeRank = auth()->user()->isManagerOrAbove();
+    $canRegister = auth()->user()->isManagerOrAbove();
 @endphp
 <div class="text-sm text-gray-500" style="margin-bottom: 12px;">
     ダッシュボード &gt; {{ $deptLabel }} &gt; <span class="text-gray-800 font-medium">顧客一覧</span>
@@ -14,10 +16,12 @@
 
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
     <h1 style="font-size: 20px; font-weight: 700; margin: 0;">顧客一覧（{{ $deptLabel }}）</h1>
-    <a href="{{ route("{$department}.customers.create") }}" class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        新規登録
-    </a>
+    @if($canRegister)
+        <a href="{{ route("{$department}.customers.create") }}" class="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-md">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            新規登録
+        </a>
+    @endif
 </div>
 
 

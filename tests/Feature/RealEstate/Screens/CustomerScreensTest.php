@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksBuyerScreenButtons;
 use Tests\Concerns\ChecksRankMenu;
 use Tests\Concerns\RunsBuyerFormScript;
 
@@ -23,6 +24,7 @@ use Tests\Concerns\RunsBuyerFormScript;
  */
 class CustomerScreensTest extends RealEstateScreenTestCase
 {
+    use ChecksBuyerScreenButtons;
     use ChecksRankMenu;
     use RunsBuyerFormScript;
 
@@ -431,5 +433,36 @@ class CustomerScreensTest extends RealEstateScreenTestCase
         $this->assertFalse(str_contains($edit, '（選択肢に無い値）'), '職業が選択肢にあるのに、余計な選択肢が足されている');
         $form = $this->parseForm($edit, 'action="' . route('realestate.customers.update', $buyer) . '"');
         $this->assertSame('会社員', $form['fields']['occupation']);
+    }
+
+    // ============================================================
+    // 押せる人にだけボタンを出す（設計メモ 2026-11-27-buyer-screen-buttons-design.md・Bug #96 と同じ形）
+    // ============================================================
+
+    /**
+     * 不動産の買主の画面も、ボタンは送り先のルートが通す人にだけ出す（画面は住宅事業と共用）。
+     * 出たリンクは描いた href をたどって開ける。ボタンが 1 つも無いアンケートの行も、日付はそのまま出る。
+     */
+    #[DataProvider('buttonRoles')]
+    public function test_each_role_sees_only_the_buttons_it_can_use(UserRole $role): void
+    {
+        $this->user = $this->userWithRole($role);
+        $buyer = $this->buyer();
+        $survey = BuyerSurvey::create(['buyer_id' => $buyer->id, 'department' => 'realestate', 'survey_date' => '2026-10-01']);
+        $buttons = $this->buyerScreenButtons('realestate', $buyer, $survey);
+        $show = $this->htmlOf(route('realestate.customers.show', $buyer));
+
+        $this->assertBuyerScreenButtons($this->htmlOf(route('realestate.customers.index')), $show, $buttons, $role);
+        $this->assertUsableLinksOpen($buttons, $role);
+        $this->assertStringContainsString('2026/10/01', $show, 'アンケートの行の日付が出ていない');
+    }
+
+    public static function buttonRoles(): array
+    {
+        return [
+            '経営層' => [UserRole::Executive],
+            '管理者' => [UserRole::Manager],
+            '一般担当' => [UserRole::Staff],
+        ];
     }
 }

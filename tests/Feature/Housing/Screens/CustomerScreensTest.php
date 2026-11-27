@@ -9,6 +9,7 @@ use App\Models\SurveyQuestion;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\ChecksBuyerScreenButtons;
 use Tests\Concerns\ChecksRankMenu;
 use Tests\Concerns\RunsBuyerFormScript;
 use Tests\Concerns\SignsOutElsewhere;
@@ -23,6 +24,7 @@ use Tests\Concerns\SignsOutElsewhere;
  */
 class CustomerScreensTest extends HousingScreenTestCase
 {
+    use ChecksBuyerScreenButtons;
     use ChecksRankMenu;
     use RunsBuyerFormScript;
     use SignsOutElsewhere;
@@ -606,5 +608,37 @@ class CustomerScreensTest extends HousingScreenTestCase
         $this->assertSame('A', $buyer->getDepartmentPivot('housing')->rank->value);
         $after = $this->driveAlpine($html, 'selectRank', '({})', $steps, [$this->asFetchResponse($response)], true, ['_currentBadge.textContent']);
         $this->assertSame([\App\Enums\BuyerRank::A->label()], $after['evaluated']);
+    }
+
+    // ============================================================
+    // 押せる人にだけボタンを出す（設計メモ 2026-11-27-buyer-screen-buttons-design.md・Bug #96 と同じ形）
+    // ============================================================
+
+    /**
+     * 一覧の「新規登録」と詳細の「編集」「削除」「アンケートを追加」、アンケートの行の「詳細」「編集」「削除」は、
+     * 送り先のルートが通す人にだけ出す（直す前は全員に出ていて、押せない人が押すと 403 になっていた）。
+     * 出たリンクは描いた href をたどって開ける。ボタンが 1 つも無いアンケートの行も、日付はそのまま出る。
+     */
+    #[DataProvider('buttonRoles')]
+    public function test_each_role_sees_only_the_buttons_it_can_use(UserRole $role): void
+    {
+        $this->user = $this->member($role);
+        $buyer = $this->buyer();
+        $survey = BuyerSurvey::create(['buyer_id' => $buyer->id, 'department' => 'housing', 'survey_date' => '2026-10-01']);
+        $buttons = $this->buyerScreenButtons('housing', $buyer, $survey);
+        $show = $this->htmlOf(route('housing.customers.show', $buyer));
+
+        $this->assertBuyerScreenButtons($this->htmlOf(route('housing.customers.index')), $show, $buttons, $role);
+        $this->assertUsableLinksOpen($buttons, $role);
+        $this->assertStringContainsString('2026/10/01', $show, 'アンケートの行の日付が出ていない');
+    }
+
+    public static function buttonRoles(): array
+    {
+        return [
+            '経営層' => [UserRole::Executive],
+            '管理者' => [UserRole::Manager],
+            '一般担当' => [UserRole::Staff],
+        ];
     }
 }
